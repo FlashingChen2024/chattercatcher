@@ -3,4 +3,5 @@ dist/
 coverage/
 .env
 .chattercatcher-test/
+config/
 npm-debug.log*

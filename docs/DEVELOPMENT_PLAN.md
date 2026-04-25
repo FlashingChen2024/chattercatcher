@@ -34,6 +34,11 @@
 - 基础本地 Web UI：状态、历史、配置。
 - `chattercatcher doctor`。
 
+`doctor` 需要覆盖两类检查：
+
+- 默认离线检查：配置目录、飞书配置完整性、SQLite、LanceDB、RAG 策略。
+- 可选在线检查：`chattercatcher doctor --online` 调用 OpenAI-compatible chat 和 embedding 接口，确认模型连通性。
+
 ### 验收标准
 
 - `npm install -g chattercatcher` 暴露 CLI。

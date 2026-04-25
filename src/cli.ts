@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import { loadConfig, loadSecrets, resetConfigFiles, saveConfig, saveSecrets, ensureConfigFiles, maskSecret } from "./config/store.js";
 import { getChatterCatcherHome, getConfigPath, getSecretsPath } from "./config/paths.js";
 import { getDatabasePath, openDatabase } from "./db/database.js";
+import { formatDoctorChecks, runDoctor } from "./doctor/checks.js";
 import { createFeishuGateway } from "./feishu/gateway.js";
 import type { FeishuReceiveMessageEvent } from "./feishu/normalize.js";
 import { FeishuQuestionHandler } from "./feishu/question.js";
@@ -106,25 +107,11 @@ settings.command("reset").description("重置本地配置和密钥").action(asyn
   console.log("配置已重置。");
 });
 
-program.command("doctor").description("检查本地配置状态").action(async () => {
+program.command("doctor").description("检查本地配置、存储和可选在线连通性").option("--online", "检查 LLM 和 Embedding 接口连通性").action(async (options: { online?: boolean }) => {
   const config = await loadConfig();
   const secrets = await loadSecrets();
-  const checks = [
-    ["配置目录", getChatterCatcherHome()],
-    ["数据库", getDatabasePath(config)],
-    ["飞书 App ID", config.feishu.appId ? "已配置" : "未配置"],
-    ["飞书 App Secret", secrets.feishu.appSecret ? "已配置" : "未配置"],
-    ["LLM Base URL", config.llm.baseUrl || "未配置"],
-    ["LLM API Key", secrets.llm.apiKey ? "已配置" : "未配置"],
-    ["Chat Model", config.llm.model || "未配置"],
-    ["Embedding Model", config.embedding.model || "未配置"],
-    ["RAG 模式", "强制：必须先检索证据再回答"],
-    ["Web UI", `${config.web.host}:${config.web.port}`],
-  ];
-
-  for (const [name, value] of checks) {
-    console.log(`${name}: ${value}`);
-  }
+  const checks = await runDoctor(config, secrets, { online: options.online });
+  console.log(formatDoctorChecks(checks));
 });
 
 const gateway = program.command("gateway").description("管理本地飞书 Gateway");
