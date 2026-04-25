@@ -280,6 +280,34 @@ files
     }
   });
 
+files
+  .command("list")
+  .description("查看已进入 RAG 的本地文件")
+  .option("--limit <number>", "最多显示的文件数", "50")
+  .action(async (options: { limit: string }) => {
+    const config = await loadConfig();
+    const database = openDatabase(config);
+    const messages = new MessageRepository(database);
+    const limit = Number(options.limit);
+
+    try {
+      const files = messages.listFiles(Number.isFinite(limit) ? limit : 50);
+      if (files.length === 0) {
+        console.log("还没有文件。可运行 chattercatcher files add <path...> 导入文本类文件。");
+        return;
+      }
+
+      for (const file of files) {
+        console.log(`${file.fileName} | 字符数=${file.characters} | 导入时间=${file.importedAt}`);
+        if (file.storedPath) {
+          console.log(`  本地保存：${file.storedPath}`);
+        }
+      }
+    } finally {
+      database.close();
+    }
+  });
+
 program.command("logs").description("查看日志").option("--follow", "持续输出日志").action((options: { follow?: boolean }) => {
   console.log(options.follow ? "日志跟随将在日志文件接入后实现。" : "日志查看将在日志文件接入后实现。");
 });
