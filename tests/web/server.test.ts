@@ -65,6 +65,7 @@ describe("web server", () => {
       const files = await app.inject({ method: "GET", url: "/api/files" });
       expect(files.json().items[0]).toMatchObject({
         fileName: "activity.md",
+        parser: "text",
       });
       expect(files.json().items[0].characters).toBeGreaterThan(0);
     } finally {

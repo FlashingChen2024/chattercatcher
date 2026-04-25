@@ -29,6 +29,8 @@ export interface FileRecord {
   storedPath?: string;
   bytes?: number;
   characters: number;
+  parser?: string;
+  parserWarnings?: string[];
   importedAt: string;
 }
 

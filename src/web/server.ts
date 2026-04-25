@@ -224,7 +224,7 @@ function buildHtml(): string {
         files.className = "";
         files.innerHTML = \`
           <table>
-            <thead><tr><th>文件</th><th>字符</th></tr></thead>
+            <thead><tr><th>文件</th><th>解析器</th><th>字符</th></tr></thead>
             <tbody>
               \${items.map((item) => \`
                 <tr>
@@ -232,6 +232,7 @@ function buildHtml(): string {
                     <div>\${escapeHtml(item.fileName)}</div>
                     <div class="path" title="\${escapeHtml(item.storedPath)}">\${escapeHtml(item.storedPath)}</div>
                   </td>
+                  <td>\${escapeHtml(item.parser || "unknown")}</td>
                   <td>\${escapeHtml(item.characters)}</td>
                 </tr>
               \`).join("")}

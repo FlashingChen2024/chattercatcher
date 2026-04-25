@@ -324,6 +324,10 @@ export class MessageRepository {
         storedPath: typeof payload.storedPath === "string" ? payload.storedPath : undefined,
         bytes: typeof payload.bytes === "number" ? payload.bytes : undefined,
         characters: row.characters,
+        parser: typeof payload.parser === "string" ? payload.parser : undefined,
+        parserWarnings: Array.isArray(payload.parserWarnings)
+          ? payload.parserWarnings.filter((item): item is string => typeof item === "string")
+          : undefined,
         importedAt: row.importedAt,
       };
     });

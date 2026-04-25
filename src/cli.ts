@@ -302,7 +302,12 @@ files
       }
 
       for (const file of files) {
-        console.log(`${file.fileName} | 字符数=${file.characters} | 导入时间=${file.importedAt}`);
+        console.log(
+          `${file.fileName} | 解析器=${file.parser ?? "unknown"} | 字符数=${file.characters} | 导入时间=${file.importedAt}`,
+        );
+        if (file.parserWarnings?.length) {
+          console.log(`  解析警告：${file.parserWarnings.join("；")}`);
+        }
         if (file.storedPath) {
           console.log(`  本地保存：${file.storedPath}`);
         }
