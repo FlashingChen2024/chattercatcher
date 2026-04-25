@@ -2,11 +2,12 @@ import fs from "node:fs/promises";
 import type { AppConfig, AppSecrets } from "../config/schema.js";
 import { getChatterCatcherHome } from "../config/paths.js";
 import { getDatabasePath, openDatabase } from "../db/database.js";
+import { FileJobRepository } from "../files/jobs.js";
 import { getGatewayStatus } from "../gateway/index.js";
 import { createChatModel, createEmbeddingModel } from "../llm/openai-compatible.js";
 import { MessageRepository } from "../messages/repository.js";
-import { getLanceDbPath, LanceDbVectorStore } from "../rag/lancedb-store.js";
 import { hasEmbeddingConfig } from "../rag/factory.js";
+import { getLanceDbPath, LanceDbVectorStore } from "../rag/lancedb-store.js";
 
 export type DoctorStatus = "pass" | "warn" | "fail";
 
@@ -44,6 +45,7 @@ export async function runDoctor(
   checks.push(checkLlmConfig(config, secrets));
   checks.push(checkEmbeddingConfig(config, secrets));
   checks.push(await checkSqlite(config));
+  checks.push(await checkFilePipeline(config));
   checks.push(await checkLanceDb(config));
   checks.push(checkRagPolicy());
 
@@ -104,6 +106,27 @@ async function checkSqlite(config: AppConfig): Promise<DoctorCheck> {
   }
 }
 
+async function checkFilePipeline(config: AppConfig): Promise<DoctorCheck> {
+  let database: ReturnType<typeof openDatabase> | null = null;
+  try {
+    database = openDatabase(config);
+    const messages = new MessageRepository(database);
+    const jobs = new FileJobRepository(database);
+    const fileCount = messages.listFiles(1_000_000).length;
+    const failedJobs = jobs.list(1_000_000, { status: "failed" });
+
+    if (failedJobs.length > 0) {
+      return warn("文件解析", `files=${fileCount}；failed_jobs=${failedJobs.length}；可运行 chattercatcher files jobs --status failed 查看。`);
+    }
+
+    return pass("文件解析", `files=${fileCount}；failed_jobs=0`);
+  } catch (error) {
+    return fail("文件解析", error instanceof Error ? error.message : String(error));
+  } finally {
+    database?.close();
+  }
+}
+
 async function checkLanceDb(config: AppConfig): Promise<DoctorCheck> {
   let store: LanceDbVectorStore | null = null;
   try {
@@ -127,9 +150,7 @@ async function checkChatModel(config: AppConfig, secrets: AppSecrets): Promise<D
   }
 
   try {
-    const answer = await createChatModel(config, secrets).complete([
-      { role: "user", content: "Reply with OK only." },
-    ]);
+    const answer = await createChatModel(config, secrets).complete([{ role: "user", content: "Reply with OK only." }]);
     return pass("LLM 连通性", answer.slice(0, 80));
   } catch (error) {
     return fail("LLM 连通性", error instanceof Error ? error.message : String(error));
@@ -162,4 +183,3 @@ export function formatDoctorChecks(checks: DoctorCheck[]): string {
 
   return checks.map((check) => `[${icon[check.status]}] ${check.name}: ${check.message}`).join("\n");
 }
-
