@@ -11,6 +11,7 @@ import { formatDoctorChecks, runDoctor } from "./doctor/checks.js";
 import { createFeishuGateway } from "./feishu/gateway.js";
 import type { FeishuReceiveMessageEvent } from "./feishu/normalize.js";
 import { FeishuQuestionHandler } from "./feishu/question.js";
+import { FeishuResourceDownloader } from "./feishu/resource-downloader.js";
 import { FeishuMessageSender } from "./feishu/sender.js";
 import { ingestLocalFile } from "./files/ingest.js";
 import { GatewayIngestor } from "./gateway/ingest.js";
@@ -162,6 +163,7 @@ gateway.command("start").description("启动飞书长连接 Gateway 和本地 We
     config,
     secrets,
     ingestor: new GatewayIngestor(database),
+    resourceDownloader: FeishuResourceDownloader.fromConfig(config, secrets),
     questionHandler: new FeishuQuestionHandler({
       config,
       secrets,

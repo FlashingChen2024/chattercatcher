@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultConfig } from "../../src/config/schema.js";
 import { openDatabase } from "../../src/db/database.js";
+import { FeishuResourceDownloader } from "../../src/feishu/resource-downloader.js";
 import { GatewayIngestor } from "../../src/gateway/ingest.js";
 import { MessageRepository } from "../../src/messages/repository.js";
 import { MessageFtsRetriever } from "../../src/rag/message-retriever.js";
@@ -54,5 +55,55 @@ describe("GatewayIngestor", () => {
       database.close();
     }
   });
-});
 
+  it("飞书文本类附件下载后会进入 RAG 文件库", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const database = openDatabase(config);
+    const downloader = new FeishuResourceDownloader(
+      {
+        im: {
+          messageResource: {
+            async get() {
+              return {
+                async writeFile(filePath: string) {
+                  await fs.writeFile(filePath, "附件里写着端午活动改到 2026/6/30。", "utf8");
+                },
+              };
+            },
+          },
+        },
+      },
+      testDir,
+    );
+
+    try {
+      const result = await new GatewayIngestor(database).ingestFeishuEventAndDownloadAttachments({
+        config,
+        downloader,
+        payload: {
+          event: {
+            sender: { sender_id: { open_id: "ou_mom" } },
+            message: {
+              message_id: "om_file",
+              chat_id: "oc_family",
+              create_time: "1777111200000",
+              message_type: "file",
+              content: JSON.stringify({ file_key: "file_v2_xxx", file_name: "活动安排.md" }),
+            },
+          },
+        },
+      });
+
+      const messages = new MessageRepository(database);
+      const evidence = await new MessageFtsRetriever(messages).retrieve("附件端午活动");
+
+      expect(result.accepted).toBe(true);
+      expect(result.attachment?.downloaded?.fileName).toBe("om_file-活动安排.md");
+      expect(result.attachment?.indexedMessageId).toBeTruthy();
+      expect(evidence.some((item) => item.source.type === "file" && item.text.includes("2026/6/30"))).toBe(true);
+    } finally {
+      database.close();
+    }
+  });
+});

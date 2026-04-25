@@ -16,9 +16,14 @@ export interface IngestLocalFileResult {
   characters: number;
 }
 
-function ensureSupportedTextFile(filePath: string): void {
+export function isSupportedTextFile(filePath: string): boolean {
   const extension = path.extname(filePath).toLowerCase();
-  if (!TEXT_EXTENSIONS.has(extension)) {
+  return TEXT_EXTENSIONS.has(extension);
+}
+
+function ensureSupportedTextFile(filePath: string): void {
+  if (!isSupportedTextFile(filePath)) {
+    const extension = path.extname(filePath).toLowerCase();
     throw new Error(`暂不支持该文件类型：${extension || "无扩展名"}。当前支持 txt、md、json、csv、tsv、log。`);
   }
 }

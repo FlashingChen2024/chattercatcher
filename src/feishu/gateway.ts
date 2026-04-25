@@ -1,8 +1,10 @@
 import * as lark from "@larksuiteoapi/node-sdk";
 import type { AppConfig, AppSecrets } from "../config/schema.js";
-import type { GatewayIngestor } from "../gateway/ingest.js";
+import type { GatewayIngestAndDownloadResult, GatewayIngestor } from "../gateway/ingest.js";
 import type { FeishuReceiveMessageEvent } from "./normalize.js";
 import type { FeishuQuestionHandler } from "./question.js";
+import { FeishuResourceDownloader } from "./resource-downloader.js";
+import { mapDomain } from "./sender.js";
 
 export interface FeishuGatewayRuntime {
   start(): Promise<void>;
@@ -19,6 +21,7 @@ export interface FeishuGatewayOptions {
   secrets: AppSecrets;
   ingestor: GatewayIngestor;
   questionHandler?: FeishuQuestionHandler;
+  resourceDownloader?: FeishuResourceDownloader;
   wsClientFactory?: (params: {
     appId: string;
     appSecret: string;
@@ -30,29 +33,46 @@ export interface FeishuGatewayOptions {
   }) => WsClientLike;
 }
 
-function mapDomain(domain: AppConfig["feishu"]["domain"]): lark.Domain {
-  return domain === "lark" ? lark.Domain.Lark : lark.Domain.Feishu;
-}
-
 function assertFeishuConfig(config: AppConfig, secrets: AppSecrets): void {
   if (!config.feishu.appId || !secrets.feishu.appSecret) {
     throw new Error("飞书配置不完整。请先运行 chattercatcher setup 或 chattercatcher settings。");
   }
 }
 
-export function createFeishuEventDispatcher(ingestor: GatewayIngestor, questionHandler?: FeishuQuestionHandler): lark.EventDispatcher {
+export function createFeishuEventDispatcher(options: {
+  config: AppConfig;
+  ingestor: GatewayIngestor;
+  questionHandler?: FeishuQuestionHandler;
+  resourceDownloader?: FeishuResourceDownloader;
+}): lark.EventDispatcher {
   return new lark.EventDispatcher({}).register({
     "im.message.receive_v1": async (data: FeishuReceiveMessageEvent["event"]) => {
       const payload = { event: data };
-      const result = ingestor.ingestFeishuEvent(payload);
+      const result: GatewayIngestAndDownloadResult = options.resourceDownloader
+        ? await options.ingestor.ingestFeishuEventAndDownloadAttachments({
+            payload,
+            downloader: options.resourceDownloader,
+            config: options.config,
+          })
+        : options.ingestor.ingestFeishuEvent(payload);
+
       if (!result.accepted) {
         console.log(`飞书消息未入库：${result.reason}`);
         return;
       }
 
       console.log(`飞书消息已入库：${result.messageId}`);
-      if (questionHandler) {
-        const decision = await questionHandler.handle(payload, {
+      if (result.attachment?.downloaded) {
+        console.log(`飞书附件已下载：${result.attachment.downloaded.storedPath}`);
+        if (result.attachment.indexedMessageId) {
+          console.log(`飞书附件已进入 RAG：${result.attachment.indexedMessageId}`);
+        } else if (result.attachment.skippedReason) {
+          console.log(`飞书附件暂未进入 RAG：${result.attachment.skippedReason}`);
+        }
+      }
+
+      if (options.questionHandler) {
+        const decision = await options.questionHandler.handle(payload, {
           excludeMessageIds: result.messageId ? [result.messageId] : [],
         });
         if (!decision.shouldAnswer) {
@@ -88,7 +108,12 @@ export function createFeishuGateway(options: FeishuGatewayOptions): FeishuGatewa
       onReconnected: () => console.log("飞书长连接已重连。"),
     });
 
-  const eventDispatcher = createFeishuEventDispatcher(options.ingestor, options.questionHandler);
+  const eventDispatcher = createFeishuEventDispatcher({
+    config: options.config,
+    ingestor: options.ingestor,
+    questionHandler: options.questionHandler,
+    resourceDownloader: options.resourceDownloader,
+  });
 
   return {
     async start() {
