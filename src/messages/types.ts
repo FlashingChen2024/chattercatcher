@@ -1,0 +1,47 @@
+export interface ChatRecord {
+  id: string;
+  platform: string;
+  platformChatId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MessageRecord {
+  id: string;
+  platform: string;
+  platformMessageId: string;
+  chatId: string;
+  senderId: string;
+  senderName: string;
+  messageType: string;
+  text: string;
+  rawPayloadJson: string;
+  sentAt: string;
+  receivedAt: string;
+  createdAt: string;
+}
+
+export interface IngestMessageInput {
+  platform: string;
+  platformChatId: string;
+  chatName: string;
+  platformMessageId: string;
+  senderId: string;
+  senderName: string;
+  messageType: string;
+  text: string;
+  rawPayload?: unknown;
+  sentAt: string;
+}
+
+export interface MessageSearchResult {
+  chunkId: string;
+  messageId: string;
+  text: string;
+  score: number;
+  chatName: string;
+  senderName: string;
+  sentAt: string;
+}
+

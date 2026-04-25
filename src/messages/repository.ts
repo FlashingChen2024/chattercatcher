@@ -1,0 +1,252 @@
+import crypto from "node:crypto";
+import type { SqliteDatabase } from "../db/database.js";
+import { chunkText } from "./chunker.js";
+import type { ChatRecord, IngestMessageInput, MessageSearchResult } from "./types.js";
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function stableId(parts: string[]): string {
+  return crypto.createHash("sha256").update(parts.join("\u001f")).digest("hex").slice(0, 32);
+}
+
+function escapeFtsQuery(query: string): string {
+  const terms = query
+    .trim()
+    .split(/\s+/)
+    .map((term) => term.replace(/"/g, "\"\""))
+    .filter(Boolean);
+
+  if (terms.length === 0) {
+    return "\"\"";
+  }
+
+  return terms.map((term) => `"${term}"`).join(" OR ");
+}
+
+function escapeLikeTerm(term: string): string {
+  return term.replace(/[\\%_]/g, (match) => `\\${match}`);
+}
+
+function buildSearchTerms(query: string): string[] {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const terms = trimmed.split(/\s+/).filter(Boolean);
+  if (terms.length > 1) {
+    return terms;
+  }
+
+  if (/[\u3400-\u9fff]/.test(trimmed) && trimmed.length > 2) {
+    const cjkTerms = new Set<string>([trimmed]);
+    for (let index = 0; index < trimmed.length - 1; index += 1) {
+      cjkTerms.add(trimmed.slice(index, index + 2));
+    }
+
+    return [...cjkTerms];
+  }
+
+  return [trimmed];
+}
+
+export class MessageRepository {
+  constructor(private readonly database: SqliteDatabase) {}
+
+  ingest(input: IngestMessageInput): string {
+    const createdAt = nowIso();
+    const chatId = stableId([input.platform, input.platformChatId]);
+    const messageId = stableId([input.platform, input.platformMessageId]);
+    const rawPayloadJson = JSON.stringify(input.rawPayload ?? {});
+    const chunks = chunkText(input.text);
+
+    const transaction = this.database.transaction(() => {
+      this.database
+        .prepare(
+          `
+          INSERT INTO chats (id, platform, platform_chat_id, name, created_at, updated_at)
+          VALUES (@id, @platform, @platformChatId, @name, @createdAt, @updatedAt)
+          ON CONFLICT(platform, platform_chat_id)
+          DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at
+        `,
+        )
+        .run({
+          id: chatId,
+          platform: input.platform,
+          platformChatId: input.platformChatId,
+          name: input.chatName,
+          createdAt,
+          updatedAt: createdAt,
+        });
+
+      this.database
+        .prepare(
+          `
+          INSERT INTO messages (
+            id, platform, platform_message_id, chat_id, sender_id, sender_name,
+            message_type, text, raw_payload_json, sent_at, received_at, created_at
+          )
+          VALUES (
+            @id, @platform, @platformMessageId, @chatId, @senderId, @senderName,
+            @messageType, @text, @rawPayloadJson, @sentAt, @receivedAt, @createdAt
+          )
+          ON CONFLICT(platform, platform_message_id)
+          DO UPDATE SET
+            text = excluded.text,
+            raw_payload_json = excluded.raw_payload_json,
+            received_at = excluded.received_at
+        `,
+        )
+        .run({
+          id: messageId,
+          platform: input.platform,
+          platformMessageId: input.platformMessageId,
+          chatId,
+          senderId: input.senderId,
+          senderName: input.senderName,
+          messageType: input.messageType,
+          text: input.text,
+          rawPayloadJson,
+          sentAt: input.sentAt,
+          receivedAt: createdAt,
+          createdAt,
+        });
+
+      this.database.prepare("DELETE FROM message_chunks_fts WHERE message_id = ?").run(messageId);
+      this.database.prepare("DELETE FROM message_chunks WHERE message_id = ?").run(messageId);
+
+      const insertChunk = this.database.prepare(`
+        INSERT INTO message_chunks (id, message_id, chunk_index, text, metadata_json, created_at)
+        VALUES (@id, @messageId, @chunkIndex, @text, @metadataJson, @createdAt)
+      `);
+      const insertFts = this.database.prepare(`
+        INSERT INTO message_chunks_fts (text, chunk_id, message_id)
+        VALUES (@text, @chunkId, @messageId)
+      `);
+
+      for (const chunk of chunks) {
+        const chunkId = stableId([messageId, String(chunk.index)]);
+        insertChunk.run({
+          id: chunkId,
+          messageId,
+          chunkIndex: chunk.index,
+          text: chunk.text,
+          metadataJson: JSON.stringify({ sourceType: "message" }),
+          createdAt,
+        });
+        insertFts.run({ text: chunk.text, chunkId, messageId });
+      }
+    });
+
+    transaction();
+    return messageId;
+  }
+
+  listRecentMessages(limit = 20): MessageSearchResult[] {
+    return this.database
+      .prepare(
+        `
+        SELECT
+          mc.id AS chunkId,
+          m.id AS messageId,
+          mc.text AS text,
+          1.0 AS score,
+          c.name AS chatName,
+          m.sender_name AS senderName,
+          m.sent_at AS sentAt
+        FROM message_chunks mc
+        JOIN messages m ON m.id = mc.message_id
+        JOIN chats c ON c.id = m.chat_id
+        ORDER BY m.sent_at DESC
+        LIMIT ?
+      `,
+      )
+      .all(limit) as MessageSearchResult[];
+  }
+
+  searchMessages(query: string, limit = 8): MessageSearchResult[] {
+    const ftsQuery = escapeFtsQuery(query);
+    const ftsResults = this.database
+      .prepare(
+        `
+        SELECT
+          fts.chunk_id AS chunkId,
+          fts.message_id AS messageId,
+          mc.text AS text,
+          bm25(message_chunks_fts) * -1 AS score,
+          c.name AS chatName,
+          m.sender_name AS senderName,
+          m.sent_at AS sentAt
+        FROM message_chunks_fts fts
+        JOIN message_chunks mc ON mc.id = fts.chunk_id
+        JOIN messages m ON m.id = fts.message_id
+        JOIN chats c ON c.id = m.chat_id
+        WHERE message_chunks_fts MATCH ?
+        ORDER BY bm25(message_chunks_fts)
+        LIMIT ?
+      `,
+      )
+      .all(ftsQuery, limit) as MessageSearchResult[];
+
+    if (ftsResults.length > 0) {
+      return ftsResults;
+    }
+
+    const terms = buildSearchTerms(query);
+    if (terms.length === 0) {
+      return [];
+    }
+
+    const where = terms.map(() => "mc.text LIKE ? ESCAPE '\\'").join(" OR ");
+    const params = terms.map((term) => `%${escapeLikeTerm(term)}%`);
+
+    return this.database
+      .prepare(
+        `
+        SELECT
+          mc.id AS chunkId,
+          m.id AS messageId,
+          mc.text AS text,
+          0.1 AS score,
+          c.name AS chatName,
+          m.sender_name AS senderName,
+          m.sent_at AS sentAt
+        FROM message_chunks mc
+        JOIN messages m ON m.id = mc.message_id
+        JOIN chats c ON c.id = m.chat_id
+        WHERE ${where}
+        ORDER BY m.sent_at DESC
+        LIMIT ?
+      `,
+      )
+      .all(...params, limit) as MessageSearchResult[];
+  }
+
+  getChatCount(): number {
+    return (this.database.prepare("SELECT COUNT(*) AS count FROM chats").get() as { count: number }).count;
+  }
+
+  getMessageCount(): number {
+    return (this.database.prepare("SELECT COUNT(*) AS count FROM messages").get() as { count: number }).count;
+  }
+
+  listChats(): ChatRecord[] {
+    return this.database
+      .prepare(
+        `
+        SELECT
+          id,
+          platform,
+          platform_chat_id AS platformChatId,
+          name,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM chats
+        ORDER BY updated_at DESC
+      `,
+      )
+      .all() as ChatRecord[];
+  }
+}

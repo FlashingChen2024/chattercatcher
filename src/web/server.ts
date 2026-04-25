@@ -1,13 +1,21 @@
 import Fastify from "fastify";
 import type { AppConfig } from "../config/schema.js";
+import { openDatabase } from "../db/database.js";
 import { getGatewayStatus } from "../gateway/index.js";
+import { MessageRepository } from "../messages/repository.js";
 
 export async function startWebServer(config: AppConfig): Promise<void> {
   const app = Fastify({ logger: false });
+  const database = openDatabase(config);
+  const messages = new MessageRepository(database);
 
   app.get("/api/status", async () => ({
     app: "ChatterCatcher",
     gateway: getGatewayStatus(config),
+    data: {
+      chats: messages.getChatCount(),
+      messages: messages.getMessageCount(),
+    },
     rag: {
       mode: "required",
       note: "问答必须先检索证据，禁止全量上下文堆叠。",
@@ -43,6 +51,7 @@ export async function startWebServer(config: AppConfig): Promise<void> {
           <div class="item"><strong>Web UI</strong><br />运行中：${config.web.host}:${config.web.port}</div>
           <div class="item"><strong>RAG</strong><br />强制启用，禁止暴力堆叠上下文。</div>
           <div class="item"><strong>飞书</strong><br />${getGatewayStatus(config).message}</div>
+          <div class="item"><strong>本地数据</strong><br />群：${messages.getChatCount()}，消息：${messages.getMessageCount()}</div>
         </div>
       </section>
       <section>
