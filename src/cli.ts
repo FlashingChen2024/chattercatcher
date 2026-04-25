@@ -8,14 +8,46 @@ import { getDatabasePath, openDatabase } from "./db/database.js";
 import type { FeishuReceiveMessageEvent } from "./feishu/normalize.js";
 import { GatewayIngestor } from "./gateway/ingest.js";
 import { getGatewayStatus } from "./gateway/index.js";
-import { createChatModel } from "./llm/openai-compatible.js";
+import { createChatModel, createEmbeddingModel } from "./llm/openai-compatible.js";
 import { MessageRepository } from "./messages/repository.js";
 import { HybridRetriever } from "./rag/hybrid-retriever.js";
+import { indexMessageChunks } from "./rag/indexer.js";
+import { getLanceDbPath, LanceDbVectorStore } from "./rag/lancedb-store.js";
 import { MessageFtsRetriever } from "./rag/message-retriever.js";
 import { askWithRag } from "./rag/qa-service.js";
+import type { Retriever } from "./rag/retriever.js";
+import { VectorRetriever } from "./rag/vector-retriever.js";
 import { startWebServer } from "./web/server.js";
 
 const program = new Command();
+
+function hasEmbeddingConfig(config: Awaited<ReturnType<typeof loadConfig>>, secrets: Awaited<ReturnType<typeof loadSecrets>>): boolean {
+  return Boolean((config.embedding.baseUrl || config.llm.baseUrl) && config.embedding.model && (secrets.embedding.apiKey || secrets.llm.apiKey));
+}
+
+async function createHybridRetriever(input: {
+  config: Awaited<ReturnType<typeof loadConfig>>;
+  secrets: Awaited<ReturnType<typeof loadSecrets>>;
+  messages: MessageRepository;
+}): Promise<{ retriever: Retriever; close: () => void }> {
+  const retrievers: Retriever[] = [new MessageFtsRetriever(input.messages)];
+  const closers: Array<() => void> = [];
+
+  if (hasEmbeddingConfig(input.config, input.secrets)) {
+    const vectorStore = await LanceDbVectorStore.connectFromConfig(input.config);
+    retrievers.push(new VectorRetriever(createEmbeddingModel(input.config, input.secrets), vectorStore));
+    closers.push(() => vectorStore.close());
+  }
+
+  return {
+    retriever: new HybridRetriever(retrievers),
+    close: () => {
+      for (const closer of closers) {
+        closer();
+      }
+    },
+  };
+}
 
 program
   .name("chattercatcher")
@@ -155,28 +187,56 @@ const index = program.command("index").description("管理 RAG 索引");
 
 index.command("status").description("查看索引状态").action(async () => {
   const config = await loadConfig();
+  const secrets = await loadSecrets();
   const database = openDatabase(config);
   const messages = new MessageRepository(database);
+  const vectorStore = await LanceDbVectorStore.connectFromConfig(config);
+  const vectors = await vectorStore.count();
   console.log(JSON.stringify(
     {
       database: getDatabasePath(config),
+      vectorDatabase: getLanceDbPath(config),
       chats: messages.getChatCount(),
       messages: messages.getMessageCount(),
+      vectors,
       retrieval: {
         keyword: "SQLite FTS5",
-        vector: "抽象已就绪，默认目标为本地向量库（LanceDB 优先）",
-        hybrid: "启用：关键词检索 + 向量检索 adapter",
+        vector: hasEmbeddingConfig(config, secrets) ? "LanceDB 已可用于语义检索" : "LanceDB 已接入；需配置 embedding 后启用语义检索",
+        hybrid: "启用：SQLite FTS + LanceDB Vector",
         rag: "强制先检索证据再回答，禁止全量上下文堆叠",
       },
     },
     null,
     2,
   ));
+  vectorStore.close();
   database.close();
 });
 
-index.command("rebuild").description("重建索引").action(() => {
-  console.log("索引重建将在消息入库和向量库接入后实现。");
+index.command("rebuild").description("重建 LanceDB 向量索引").option("--limit <number>", "最多索引的 chunk 数", "10000").action(async (options: { limit: string }) => {
+  const config = await loadConfig();
+  const secrets = await loadSecrets();
+
+  if (!hasEmbeddingConfig(config, secrets)) {
+    console.log("Embedding 配置不完整，无法重建向量索引。请运行 chattercatcher setup 或 chattercatcher settings。");
+    return;
+  }
+
+  const database = openDatabase(config);
+  const vectorStore = await LanceDbVectorStore.connectFromConfig(config);
+
+  try {
+    const stats = await indexMessageChunks({
+      messages: new MessageRepository(database),
+      embedding: createEmbeddingModel(config, secrets),
+      store: vectorStore,
+      limit: Number(options.limit),
+    });
+    console.log(`向量索引完成：chunks=${stats.chunks}, vectors=${stats.vectors}`);
+  } finally {
+    vectorStore.close();
+    database.close();
+  }
 });
 
 program.command("logs").description("查看日志").option("--follow", "持续输出日志").action((options: { follow?: boolean }) => {
@@ -247,17 +307,24 @@ dev
   .argument("<question>", "检索问题")
   .action(async (question: string) => {
     const config = await loadConfig();
+    const secrets = await loadSecrets();
     const database = openDatabase(config);
-    const retriever = new HybridRetriever([new MessageFtsRetriever(new MessageRepository(database))]);
+    const { retriever, close } = await createHybridRetriever({
+      config,
+      secrets,
+      messages: new MessageRepository(database),
+    });
     const evidence = await retriever.retrieve(question);
 
     if (evidence.length === 0) {
       console.log("没有检索到证据。");
+      close();
       database.close();
       return;
     }
 
     console.log(JSON.stringify(evidence, null, 2));
+    close();
     database.close();
   });
 
@@ -269,7 +336,11 @@ dev
     const config = await loadConfig();
     const secrets = await loadSecrets();
     const database = openDatabase(config);
-    const retriever = new HybridRetriever([new MessageFtsRetriever(new MessageRepository(database))]);
+    const { retriever, close } = await createHybridRetriever({
+      config,
+      secrets,
+      messages: new MessageRepository(database),
+    });
 
     try {
       const result = await askWithRag({
@@ -287,6 +358,7 @@ dev
         }
       }
     } finally {
+      close();
       database.close();
     }
   });

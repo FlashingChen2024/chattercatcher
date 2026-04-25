@@ -10,6 +10,8 @@ export * from "./messages/types.js";
 export * from "./rag/answer.js";
 export * from "./rag/embedding.js";
 export * from "./rag/hybrid-retriever.js";
+export * from "./rag/indexer.js";
+export * from "./rag/lancedb-store.js";
 export * from "./rag/message-retriever.js";
 export * from "./rag/qa-service.js";
 export * from "./rag/types.js";
