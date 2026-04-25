@@ -54,7 +54,7 @@ function buildHtml(): string {
       button:hover { border-color: var(--accent); }
       .grid {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: 12px;
         margin: 24px 0;
       }
@@ -66,11 +66,11 @@ function buildHtml(): string {
         min-height: 112px;
       }
       .label { color: var(--muted); font-size: 13px; }
-      .value { margin-top: 10px; font-size: 24px; font-weight: 650; }
+      .value { margin-top: 10px; font-size: 22px; font-weight: 650; overflow-wrap: anywhere; }
       .note { margin-top: 8px; color: var(--muted); font-size: 13px; line-height: 1.45; }
       .layout {
         display: grid;
-        grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+        grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
         gap: 24px;
       }
       section { padding: 20px 0; border-top: 1px solid var(--line); }
@@ -80,10 +80,11 @@ function buildHtml(): string {
       th { color: var(--muted); font-size: 13px; font-weight: 600; }
       tr:last-child td { border-bottom: 0; }
       .message { max-width: 560px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .path { max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 13px; }
       .status-ok { color: var(--accent); }
       .status-warn { color: var(--warn); }
       .empty { color: var(--muted); padding: 18px; background: var(--panel); border: 1px dashed var(--line); border-radius: 8px; }
-      @media (max-width: 840px) {
+      @media (max-width: 900px) {
         header, .layout { display: block; }
         .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         header button { margin-top: 16px; }
@@ -120,8 +121,13 @@ function buildHtml(): string {
             <div id="chats" class="empty">正在读取...</div>
           </section>
           <section>
+            <h2>文件库</h2>
+            <div id="files" class="empty">正在读取...</div>
+          </section>
+          <section>
             <h2>本地操作</h2>
             <p><code>chattercatcher settings</code> 修改配置。</p>
+            <p><code>chattercatcher files add &lt;path...&gt;</code> 导入文本类文件。</p>
             <p><code>chattercatcher doctor</code> 检查飞书、模型、RAG 和本地存储。</p>
           </section>
         </aside>
@@ -131,6 +137,7 @@ function buildHtml(): string {
       const metrics = document.querySelector("#metrics");
       const messages = document.querySelector("#messages");
       const chats = document.querySelector("#chats");
+      const files = document.querySelector("#files");
       const refresh = document.querySelector("#refresh");
 
       function fmt(value) {
@@ -151,6 +158,7 @@ function buildHtml(): string {
           ["Gateway", status.gateway.message, gatewayClass],
           ["群聊", status.data.chats, ""],
           ["消息", status.data.messages, ""],
+          ["文件", status.data.files, ""],
           ["Web UI", status.web.host + ":" + status.web.port, ""],
         ].map(([label, value, extra]) => \`
           <div class="metric">
@@ -207,15 +215,42 @@ function buildHtml(): string {
         \`;
       }
 
+      function renderFiles(items) {
+        if (items.length === 0) {
+          files.className = "empty";
+          files.textContent = "还没有文件。可先运行 chattercatcher files add <path...> 导入文本类文件。";
+          return;
+        }
+        files.className = "";
+        files.innerHTML = \`
+          <table>
+            <thead><tr><th>文件</th><th>字符</th></tr></thead>
+            <tbody>
+              \${items.map((item) => \`
+                <tr>
+                  <td>
+                    <div>\${escapeHtml(item.fileName)}</div>
+                    <div class="path" title="\${escapeHtml(item.storedPath)}">\${escapeHtml(item.storedPath)}</div>
+                  </td>
+                  <td>\${escapeHtml(item.characters)}</td>
+                </tr>
+              \`).join("")}
+            </tbody>
+          </table>
+        \`;
+      }
+
       async function load() {
-        const [status, recent, chatList] = await Promise.all([
+        const [status, recent, chatList, fileList] = await Promise.all([
           fetch("/api/status").then((response) => response.json()),
           fetch("/api/messages/recent?limit=20").then((response) => response.json()),
           fetch("/api/chats").then((response) => response.json()),
+          fetch("/api/files").then((response) => response.json()),
         ]);
         renderMetrics(status);
         renderMessages(recent.items);
         renderChats(chatList.items);
+        renderFiles(fileList.items);
       }
 
       refresh.addEventListener("click", () => void load());
@@ -223,6 +258,11 @@ function buildHtml(): string {
     </script>
   </body>
 </html>`;
+}
+
+function parseLimit(value: string | undefined, fallback: number, max: number): number {
+  const rawLimit = Number(value ?? fallback);
+  return Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), max) : fallback;
 }
 
 export function createWebApp(config: AppConfig): FastifyInstance {
@@ -240,6 +280,7 @@ export function createWebApp(config: AppConfig): FastifyInstance {
     data: {
       chats: messages.getChatCount(),
       messages: messages.getMessageCount(),
+      files: messages.listFiles(1_000).length,
     },
     rag: {
       mode: "required",
@@ -257,9 +298,15 @@ export function createWebApp(config: AppConfig): FastifyInstance {
     items: messages.listChats(),
   }));
 
+  app.get("/api/files", async (request) => {
+    const limit = parseLimit((request.query as { limit?: string }).limit, 50, 200);
+    return {
+      items: messages.listFiles(limit),
+    };
+  });
+
   app.get("/api/messages/recent", async (request) => {
-    const rawLimit = Number((request.query as { limit?: string }).limit ?? 20);
-    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), 100) : 20;
+    const limit = parseLimit((request.query as { limit?: string }).limit, 20, 100);
     return {
       items: messages.listRecentMessages(limit),
     };

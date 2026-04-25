@@ -22,6 +22,16 @@ export interface MessageRecord {
   createdAt: string;
 }
 
+export interface FileRecord {
+  messageId: string;
+  fileName: string;
+  sourcePath?: string;
+  storedPath?: string;
+  bytes?: number;
+  characters: number;
+  importedAt: string;
+}
+
 export interface IngestMessageInput {
   platform: string;
   platformChatId: string;

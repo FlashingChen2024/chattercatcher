@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { SqliteDatabase } from "../db/database.js";
 import { chunkText } from "./chunker.js";
-import type { ChatRecord, IngestMessageInput, MessageSearchResult } from "./types.js";
+import type { ChatRecord, FileRecord, IngestMessageInput, MessageSearchResult } from "./types.js";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -50,6 +50,15 @@ function buildSearchTerms(query: string): string[] {
   }
 
   return [trimmed];
+}
+
+function parseRawPayload(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
 }
 
 export class MessageRepository {
@@ -280,5 +289,43 @@ export class MessageRepository {
       `,
       )
       .all() as ChatRecord[];
+  }
+
+  listFiles(limit = 50): FileRecord[] {
+    const rows = this.database
+      .prepare(
+        `
+        SELECT
+          id AS messageId,
+          sender_name AS fileName,
+          raw_payload_json AS rawPayloadJson,
+          length(text) AS characters,
+          created_at AS importedAt
+        FROM messages
+        WHERE message_type = 'file'
+        ORDER BY created_at DESC
+        LIMIT ?
+      `,
+      )
+      .all(limit) as Array<{
+      messageId: string;
+      fileName: string;
+      rawPayloadJson: string;
+      characters: number;
+      importedAt: string;
+    }>;
+
+    return rows.map((row) => {
+      const payload = parseRawPayload(row.rawPayloadJson);
+      return {
+        messageId: row.messageId,
+        fileName: row.fileName,
+        sourcePath: typeof payload.sourcePath === "string" ? payload.sourcePath : undefined,
+        storedPath: typeof payload.storedPath === "string" ? payload.storedPath : undefined,
+        bytes: typeof payload.bytes === "number" ? payload.bytes : undefined,
+        characters: row.characters,
+        importedAt: row.importedAt,
+      };
+    });
   }
 }

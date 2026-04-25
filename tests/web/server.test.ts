@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultConfig } from "../../src/config/schema.js";
 import { openDatabase } from "../../src/db/database.js";
+import { ingestLocalFile } from "../../src/files/ingest.js";
 import { MessageRepository } from "../../src/messages/repository.js";
 import { createWebApp } from "../../src/web/server.js";
 
@@ -18,9 +19,11 @@ describe("web server", () => {
     await fs.rm(testDir, { recursive: true, force: true });
   });
 
-  it("提供状态、群聊和最近消息 API", async () => {
+  it("提供状态、群聊、最近消息和文件 API", async () => {
     const config = createDefaultConfig();
-    config.storage.dataDir = testDir;
+    config.storage.dataDir = path.join(testDir, "data");
+    const filePath = path.join(testDir, "activity.md");
+    await fs.writeFile(filePath, "端午活动改到 2026/6/30。", "utf8");
 
     const database = openDatabase(config);
     try {
@@ -36,6 +39,7 @@ describe("web server", () => {
         text: "端午活动改到 2026/6/30。",
         sentAt: "2026-04-25T08:00:00.000Z",
       });
+      await ingestLocalFile({ config, messages: repository, filePath });
     } finally {
       database.close();
     }
@@ -46,19 +50,23 @@ describe("web server", () => {
       expect(status.statusCode).toBe(200);
       expect(status.json()).toMatchObject({
         app: "ChatterCatcher",
-        data: { chats: 1, messages: 1 },
+        data: { chats: 2, messages: 2, files: 1 },
         rag: { mode: "required" },
       });
 
       const chats = await app.inject({ method: "GET", url: "/api/chats" });
-      expect(chats.json().items[0]).toMatchObject({ name: "家庭群", platform: "dev" });
+      expect(chats.json().items.map((item: { name: string }) => item.name)).toContain("家庭群");
 
       const recent = await app.inject({ method: "GET", url: "/api/messages/recent?limit=1" });
       expect(recent.json().items[0]).toMatchObject({
-        chatName: "家庭群",
-        senderName: "老妈",
         text: "端午活动改到 2026/6/30。",
       });
+
+      const files = await app.inject({ method: "GET", url: "/api/files" });
+      expect(files.json().items[0]).toMatchObject({
+        fileName: "activity.md",
+      });
+      expect(files.json().items[0].characters).toBeGreaterThan(0);
     } finally {
       await app.close();
     }
@@ -74,6 +82,7 @@ describe("web server", () => {
       expect(response.headers["content-type"]).toContain("text/html");
       expect(response.body).toContain("本地优先的家庭群知识库");
       expect(response.body).toContain("不堆叠全量上下文");
+      expect(response.body).toContain("文件库");
     } finally {
       await app.close();
     }
