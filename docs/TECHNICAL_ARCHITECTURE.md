@@ -67,6 +67,8 @@ flowchart TD
 - SQLite FTS5：关键词检索。
 - LanceDB 或其他本地嵌入式向量库：embedding 检索。
 
+SQLite 不能作为完整 RAG 的唯一后端。它只负责结构化元数据和关键词召回；语义召回必须走向量库 adapter。MVP 默认优先本地向量库，首选 LanceDB，保留 Qdrant/Chroma adapter 扩展空间。
+
 ### LLM 和 Embedding
 
 - OpenAI-compatible chat completions API。
@@ -228,7 +230,7 @@ RAG 是强制架构路径，不能被 prompt 堆叠替代。
 检索流程：
 
 1. 问题改写和意图识别。
-2. 对 chunk 做向量检索。
+2. 对 chunk 做向量检索，默认接本地向量库 adapter。
 3. 通过 SQLite FTS5 做关键词检索。
 4. 按群、时间、发送人、来源类型做元数据过滤。
 5. 引入时间权重和来源权重重排。

@@ -1,4 +1,5 @@
 import type { AppConfig, AppSecrets } from "../config/schema.js";
+import type { EmbeddingModel } from "../rag/embedding.js";
 import type { ChatMessage, ChatModel } from "../rag/types.js";
 
 export interface OpenAICompatibleChatOptions {
@@ -13,6 +14,12 @@ interface ChatCompletionResponse {
     message?: {
       content?: string;
     };
+  }>;
+}
+
+interface EmbeddingResponse {
+  data?: Array<{
+    embedding?: number[];
   }>;
 }
 
@@ -56,6 +63,47 @@ export class OpenAICompatibleChatModel implements ChatModel {
   }
 }
 
+export interface OpenAICompatibleEmbeddingOptions {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
+export class OpenAICompatibleEmbeddingModel implements EmbeddingModel {
+  constructor(private readonly options: OpenAICompatibleEmbeddingOptions) {}
+
+  async embed(text: string): Promise<number[]> {
+    const [vector] = await this.embedBatch([text]);
+    return vector ?? [];
+  }
+
+  async embedBatch(texts: string[]): Promise<number[][]> {
+    if (!this.options.baseUrl || !this.options.apiKey || !this.options.model) {
+      throw new Error("Embedding 配置不完整。请运行 chattercatcher setup 或 chattercatcher settings。");
+    }
+
+    const response = await fetch(`${normalizeBaseUrl(this.options.baseUrl)}/embeddings`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${this.options.apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: this.options.model,
+        input: texts,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Embedding 请求失败：${response.status} ${body}`);
+    }
+
+    const data = (await response.json()) as EmbeddingResponse;
+    return data.data?.map((item) => item.embedding ?? []) ?? [];
+  }
+}
+
 export function createChatModel(config: AppConfig, secrets: AppSecrets): OpenAICompatibleChatModel {
   return new OpenAICompatibleChatModel({
     baseUrl: config.llm.baseUrl,
@@ -64,3 +112,10 @@ export function createChatModel(config: AppConfig, secrets: AppSecrets): OpenAIC
   });
 }
 
+export function createEmbeddingModel(config: AppConfig, secrets: AppSecrets): OpenAICompatibleEmbeddingModel {
+  return new OpenAICompatibleEmbeddingModel({
+    baseUrl: config.embedding.baseUrl || config.llm.baseUrl,
+    apiKey: secrets.embedding.apiKey || secrets.llm.apiKey,
+    model: config.embedding.model,
+  });
+}

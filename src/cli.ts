@@ -10,6 +10,7 @@ import { GatewayIngestor } from "./gateway/ingest.js";
 import { getGatewayStatus } from "./gateway/index.js";
 import { createChatModel } from "./llm/openai-compatible.js";
 import { MessageRepository } from "./messages/repository.js";
+import { HybridRetriever } from "./rag/hybrid-retriever.js";
 import { MessageFtsRetriever } from "./rag/message-retriever.js";
 import { askWithRag } from "./rag/qa-service.js";
 import { startWebServer } from "./web/server.js";
@@ -163,8 +164,9 @@ index.command("status").description("查看索引状态").action(async () => {
       messages: messages.getMessageCount(),
       retrieval: {
         keyword: "SQLite FTS5",
-        vector: "待接入",
-        rag: "强制先检索证据再回答",
+        vector: "抽象已就绪，默认目标为本地向量库（LanceDB 优先）",
+        hybrid: "启用：关键词检索 + 向量检索 adapter",
+        rag: "强制先检索证据再回答，禁止全量上下文堆叠",
       },
     },
     null,
@@ -246,7 +248,7 @@ dev
   .action(async (question: string) => {
     const config = await loadConfig();
     const database = openDatabase(config);
-    const retriever = new MessageFtsRetriever(new MessageRepository(database));
+    const retriever = new HybridRetriever([new MessageFtsRetriever(new MessageRepository(database))]);
     const evidence = await retriever.retrieve(question);
 
     if (evidence.length === 0) {
@@ -267,7 +269,7 @@ dev
     const config = await loadConfig();
     const secrets = await loadSecrets();
     const database = openDatabase(config);
-    const retriever = new MessageFtsRetriever(new MessageRepository(database));
+    const retriever = new HybridRetriever([new MessageFtsRetriever(new MessageRepository(database))]);
 
     try {
       const result = await askWithRag({

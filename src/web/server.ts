@@ -19,6 +19,11 @@ export async function startWebServer(config: AppConfig): Promise<void> {
     rag: {
       mode: "required",
       note: "问答必须先检索证据，禁止全量上下文堆叠。",
+      retrieval: {
+        keyword: "SQLite FTS5",
+        vector: "adapter ready",
+        hybrid: true,
+      },
     },
     web: config.web,
   }));
@@ -49,7 +54,7 @@ export async function startWebServer(config: AppConfig): Promise<void> {
         <h2>状态</h2>
         <div class="status">
           <div class="item"><strong>Web UI</strong><br />运行中：${config.web.host}:${config.web.port}</div>
-          <div class="item"><strong>RAG</strong><br />强制启用，禁止暴力堆叠上下文。</div>
+          <div class="item"><strong>RAG</strong><br />混合检索架构：FTS + Vector adapter；禁止暴力堆叠上下文。</div>
           <div class="item"><strong>飞书</strong><br />${getGatewayStatus(config).message}</div>
           <div class="item"><strong>本地数据</strong><br />群：${messages.getChatCount()}，消息：${messages.getMessageCount()}</div>
         </div>
