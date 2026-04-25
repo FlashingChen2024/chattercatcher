@@ -302,13 +302,18 @@ files
   .command("jobs")
   .description("查看文件解析任务状态")
   .option("--limit <number>", "最多显示的任务数", "50")
-  .action(async (options: { limit: string }) => {
+  .option("--status <status>", "按状态过滤：processing、indexed、failed")
+  .action(async (options: { limit: string; status?: string }) => {
     const config = await loadConfig();
     const database = openDatabase(config);
     const limit = Number(options.limit);
 
     try {
-      const jobs = new FileJobRepository(database).list(Number.isFinite(limit) ? limit : 50);
+      const status =
+        options.status === "processing" || options.status === "indexed" || options.status === "failed"
+          ? options.status
+          : undefined;
+      const jobs = new FileJobRepository(database).list(Number.isFinite(limit) ? limit : 50, { status });
       if (jobs.length === 0) {
         console.log("还没有文件解析任务。");
         return;
@@ -316,7 +321,7 @@ files
 
       for (const job of jobs) {
         console.log(
-          `${job.fileName} | 状态=${job.status} | 解析器=${job.parser ?? "-"} | 更新时间=${job.updatedAt}`,
+          `${job.fileName} | ID=${job.id} | 状态=${job.status} | 解析器=${job.parser ?? "-"} | 更新时间=${job.updatedAt}`,
         );
         if (job.error) {
           console.log(`  错误：${job.error}`);

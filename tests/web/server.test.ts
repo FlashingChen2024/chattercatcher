@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultConfig } from "../../src/config/schema.js";
 import { openDatabase } from "../../src/db/database.js";
 import { ingestLocalFile } from "../../src/files/ingest.js";
+import { FileJobRepository } from "../../src/files/jobs.js";
 import { MessageRepository } from "../../src/messages/repository.js";
 import { createWebApp } from "../../src/web/server.js";
 
@@ -39,7 +40,7 @@ describe("web server", () => {
         text: "端午活动改到 2026/6/30。",
         sentAt: "2026-04-25T08:00:00.000Z",
       });
-      await ingestLocalFile({ config, messages: repository, filePath });
+      await ingestLocalFile({ config, messages: repository, jobs: new FileJobRepository(database), filePath });
     } finally {
       database.close();
     }
@@ -68,6 +69,12 @@ describe("web server", () => {
         parser: "text",
       });
       expect(files.json().items[0].characters).toBeGreaterThan(0);
+
+      const jobs = await app.inject({ method: "GET", url: "/api/file-jobs?status=indexed" });
+      expect(jobs.json().items[0]).toMatchObject({
+        fileName: "activity.md",
+        status: "indexed",
+      });
     } finally {
       await app.close();
     }

@@ -256,12 +256,13 @@ function buildHtml(): string {
         fileJobs.className = "";
         fileJobs.innerHTML = \`
           <table>
-            <thead><tr><th>文件</th><th>状态</th></tr></thead>
+            <thead><tr><th>任务</th><th>状态</th></tr></thead>
             <tbody>
               \${items.map((item) => \`
                 <tr>
                   <td>
                     <div>\${escapeHtml(item.fileName)}</div>
+                    <div class="path" title="\${escapeHtml(item.id)}">ID: \${escapeHtml(item.id)}</div>
                     <div class="path" title="\${escapeHtml(item.error || item.storedPath)}">\${escapeHtml(item.error || item.storedPath)}</div>
                   </td>
                   <td>\${escapeHtml(item.status)}</td>
@@ -342,8 +343,9 @@ export function createWebApp(config: AppConfig): FastifyInstance {
 
   app.get("/api/file-jobs", async (request) => {
     const limit = parseLimit((request.query as { limit?: string }).limit, 50, 200);
+    const status = (request.query as { status?: string }).status;
     return {
-      items: fileJobs.list(limit),
+      items: fileJobs.list(limit, status === "processing" || status === "indexed" || status === "failed" ? { status } : {}),
     };
   });
 

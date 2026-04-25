@@ -61,6 +61,8 @@ describe("FileJobRepository", () => {
         status: "failed",
         error: "暂不支持该文件类型",
       });
+      expect(jobs.list(10, { status: "indexed" })).toHaveLength(0);
+      expect(jobs.list(10, { status: "failed" })).toHaveLength(1);
     } finally {
       database.close();
     }

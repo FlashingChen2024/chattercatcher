@@ -131,8 +131,8 @@ export class FileJobRepository {
     return this.listByWhere("WHERE id = ?", [id], 1)[0] ?? null;
   }
 
-  list(limit = 50): FileJobRecord[] {
-    return this.listByWhere("", [], limit);
+  list(limit = 50, options: { status?: FileJobStatus } = {}): FileJobRecord[] {
+    return options.status ? this.listByWhere("WHERE status = ?", [options.status], limit) : this.listByWhere("", [], limit);
   }
 
   private listByWhere(whereSql: string, params: unknown[], limit: number): FileJobRecord[] {
