@@ -1,159 +1,158 @@
-# Development Plan
+# 开发计划
 
-## Strategy
+## 策略
 
-Build ChatterCatcher from the narrowest useful loop:
+从最小可用闭环开始：
 
 ```text
-receive Feishu text -> store locally -> retrieve -> answer with citation
+接收飞书文字 -> 本地保存 -> RAG 检索 -> 带引用回答
 ```
 
-Only after that loop is reliable should the project expand into full file understanding, richer conflict resolution, and long-running operational polish.
+这个闭环稳定后，再扩展文件理解、冲突处理和长期运行能力。
 
-## Milestone M1: Working Text Memory
+## M1：可用的文字记忆
 
-Goal: ChatterCatcher can be installed, configured, connected to Feishu/Lark, and used for text-message question answering.
+目标：ChatterCatcher 可以安装、配置、连接飞书/Lark，并对群聊文字消息进行问答。
 
-### Scope
+### 范围
 
-- Project scaffold with TypeScript.
-- Global npm CLI package.
-- Interactive `chattercatcher setup`.
-- Editable `chattercatcher settings`.
-- Feishu/Lark gateway start/status/stop commands.
-- Feishu long connection event receiver.
-- Text message ingestion.
-- SQLite metadata database.
-- Local vector store.
-- SQLite FTS keyword index.
-- OpenAI-compatible chat provider.
-- OpenAI-compatible embedding provider.
-- Mention-triggered answer generation.
-- Source citations.
-- Basic conflict handling.
-- Local Web UI with status, history, and settings.
-- `chattercatcher doctor`.
+- TypeScript 项目脚手架。
+- npm 全局 CLI 包。
+- 交互式 `chattercatcher setup`。
+- 可编辑的 `chattercatcher settings`。
+- 飞书/Lark Gateway start/status/stop 命令。
+- 飞书长连接事件接收。
+- 文字消息入库。
+- SQLite 元数据数据库。
+- 本地向量库。
+- SQLite FTS 关键词索引。
+- OpenAI-compatible chat provider。
+- OpenAI-compatible embedding provider。
+- `@机器人` 触发回答。
+- 来源引用。
+- 基础冲突处理。
+- 基础本地 Web UI：状态、历史、配置。
+- `chattercatcher doctor`。
 
-### Acceptance Criteria
+### 验收标准
 
-- `npm install -g chattercatcher` exposes the CLI.
-- `chattercatcher setup` creates a usable local config.
-- `chattercatcher gateway start` connects to Feishu/Lark.
-- The bot receives group text messages.
-- The bot stores message text, sender, chat, timestamp, and raw payload.
-- `@ChatterCatcher` questions return concise answers with citations.
-- Newer explicit updates are preferred over older facts.
-- Ambiguous discussion is not treated as a confirmed update.
-- Web UI is available on `http://127.0.0.1:<port>`.
+- `npm install -g chattercatcher` 暴露 CLI。
+- `chattercatcher setup` 生成可用本地配置。
+- `chattercatcher gateway start` 能连接飞书/Lark。
+- 机器人能接收群文字消息。
+- 机器人保存消息文本、发送人、群、时间戳和原始 payload。
+- `@ChatterCatcher` 提问能返回简短答案和引用。
+- 明确的新信息优先于旧事实。
+- 模糊讨论不会被当成确定更新。
+- Web UI 可通过 `http://127.0.0.1:<port>` 访问。
 
-### Self-Tests
+### 自测
 
-- CLI setup dry run with temporary config directory.
-- Feishu event payload fixture ingestion test.
-- Retrieval test with known messages.
-- Answer generation test with mocked LLM.
-- Conflict resolver tests:
-  - explicit update
-  - casual suggestion
-  - old fact with no replacement
-- Web UI build test.
+- CLI setup 使用临时配置目录 dry run。
+- 飞书事件 payload fixture 入库测试。
+- 已知消息检索测试。
+- 使用 mock LLM 的答案生成测试。
+- 冲突处理测试：
+  - 明确更新。
+  - 普通建议。
+  - 旧事实没有替代。
+- Web UI build 测试。
 
-## Milestone M2: Files as Knowledge
+## M2：文件成为知识源
 
-Goal: Files, images, audio, and links become first-class searchable sources.
+目标：文件、图片、语音、链接成为一等可检索来源。
 
-### Scope
+### 范围
 
-- Feishu media/file downloader.
-- File storage under local data directory.
-- PDF parser.
-- DOCX parser.
-- XLSX parser.
-- PPTX parser.
-- Plain text and Markdown parser.
-- Image OCR path.
-- Audio transcription path.
-- Link metadata extraction.
-- Chunking pipeline.
-- Indexing job queue.
-- File library in Web UI.
-- Reindex command.
-- File citations.
-- Multi-file question answering.
+- 飞书媒体/文件下载。
+- 文件保存到本地数据目录。
+- PDF 解析。
+- DOCX 解析。
+- XLSX 解析。
+- PPTX 解析。
+- 纯文本和 Markdown 解析。
+- 图片 OCR 路径。
+- 语音转写路径。
+- 链接元数据提取。
+- chunking pipeline。
+- 索引任务队列。
+- Web UI 文件库。
+- 重建索引命令。
+- 文件引用。
+- 多文件交叉问答。
 
-### Acceptance Criteria
+### 验收标准
 
-- Files sent in group chat are downloaded and stored locally.
-- Parsed file text is visible in indexing metadata.
-- Failed parsing jobs are visible and retryable.
-- Questions can be answered from file content.
-- Answers cite file name and location when available.
-- Multiple files can contribute to one answer.
+- 群里发送的文件会被下载并本地保存。
+- 解析后的文件文本能在索引元数据中看到。
+- 解析失败任务可见、可重试。
+- 问题可以从文件内容中得到回答。
+- 答案能引用文件名和可用位置。
+- 多个文件可以共同参与一个答案。
 
-### Self-Tests
+### 自测
 
-- Parser fixture tests for each supported file type.
-- OCR fixture test.
-- Audio transcription mock test.
-- Indexing retry test.
-- Citation format test.
-- Web UI file library build and interaction test.
+- 每种支持格式的 parser fixture 测试。
+- OCR fixture 测试。
+- 语音转写 mock 测试。
+- 索引重试测试。
+- 引用格式测试。
+- Web UI 文件库构建和交互测试。
 
-## Milestone M3: Reliable Family Knowledge Base
+## M3：可信的家庭知识库
 
-Goal: ChatterCatcher becomes trustworthy enough for long-term family use.
+目标：ChatterCatcher 足够可靠，可以长期作为家庭记忆系统运行。
 
-### Scope
+### 范围
 
-- Feishu cloud document sync.
-- Fact extraction pipeline.
-- Fact version history.
-- Conflict explanation UI.
-- Group-level and member-level configuration.
-- Data deletion controls.
-- Backup and restore.
-- Scheduled summaries.
-- Service installation:
-  - Windows service
-  - macOS launchd
-  - Linux systemd
-- Optional Docker deployment.
-- Parser plugin interface.
+- 飞书云文档同步。
+- 事实抽取 pipeline。
+- 事实版本历史。
+- 冲突解释 UI。
+- 群级和成员级配置。
+- 数据删除控制。
+- 备份和恢复。
+- 定时摘要。
+- 服务安装：
+  - Windows service。
+  - macOS launchd。
+  - Linux systemd。
+- 可选 Docker 部署。
+- parser 插件接口。
 
-### Acceptance Criteria
+### 验收标准
 
-- Users can inspect why a fact is current.
-- Superseded facts remain available as history.
-- Users can delete selected local data.
-- Data can be exported and restored.
-- Gateway can run as a background service.
-- Scheduled summaries can be configured from CLI or Web UI.
+- 用户能检查某个事实为什么是当前版本。
+- 被覆盖的旧事实仍作为历史保留。
+- 用户能删除指定本地数据。
+- 数据可以导出和恢复。
+- Gateway 可以作为后台服务运行。
+- 定时摘要可以通过 CLI 或 Web UI 配置。
 
-### Self-Tests
+### 自测
 
-- Fact extraction and versioning tests.
-- Backup and restore test.
-- Service command dry-run tests.
-- Group/member config tests.
-- Data deletion tests.
+- 事实抽取和版本测试。
+- 备份恢复测试。
+- 服务命令 dry-run 测试。
+- 群/成员配置测试。
+- 数据删除测试。
 
 ## Backlog
 
-- Additional chat platforms.
-- Mobile-friendly Web UI.
-- Local-only LLM and embedding defaults.
-- Knowledge graph visualization.
-- Browser extension for manual capture.
-- Rich Feishu cards.
-- Public package hardening.
+- 更多聊天平台。
+- 移动端友好的 Web UI。
+- 本地 LLM 和 embedding 默认配置。
+- 知识图谱可视化。
+- 手动捕获浏览器扩展。
+- 飞书富文本卡片。
+- 公开 npm 包发布加固。
 
-## Release Discipline
+## 发布纪律
 
-Each milestone should end with:
+每个里程碑结束时必须有：
 
-- Passing automated tests.
-- Manual smoke test notes.
-- Updated documentation.
-- One or more focused git commits.
-- Versioned changelog entry once releases begin.
-
+- 通过的自动化测试。
+- 手工 smoke test 记录。
+- 已更新的文档。
+- 一个或多个聚焦的 git commit。
+- 开始发版后维护 changelog。

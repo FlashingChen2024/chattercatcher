@@ -1,92 +1,92 @@
-# Technical Architecture
+# 技术架构
 
-## High-Level Architecture
+## 总体架构
 
 ```mermaid
 flowchart TD
-  A["Feishu/Lark Group"] --> B["Local Gateway"]
-  B --> C["Message Ingestor"]
-  C --> D["SQLite Raw Store"]
-  C --> E["Media Downloader"]
-  E --> F["Local File Store"]
-  D --> G["Parser and Chunker"]
+  A["飞书/Lark 群"] --> B["本地 Gateway"]
+  B --> C["消息接收器"]
+  C --> D["SQLite 原始存储"]
+  C --> E["媒体下载器"]
+  E --> F["本地文件库"]
+  D --> G["解析与切块"]
   F --> G
   G --> H["Embedding Worker"]
-  H --> I["Vector Store"]
-  G --> J["SQLite FTS Index"]
-  G --> K["Fact Extractor"]
-  K --> L["Facts and Versions"]
+  H --> I["向量库"]
+  G --> J["SQLite FTS 索引"]
+  G --> K["事实抽取器"]
+  K --> L["事实与版本"]
 
-  A --> M["@Bot Question"]
-  M --> N["Query Router"]
-  N --> O["Hybrid Retriever"]
-  O --> P["Conflict Resolver"]
-  P --> Q["LLM Answer Generator"]
+  A --> M["@机器人提问"]
+  M --> N["查询路由"]
+  N --> O["混合检索器"]
+  O --> P["冲突处理器"]
+  P --> Q["LLM 答案生成器"]
   Q --> A
 
-  R["CLI"] --> S["Config and Runtime"]
-  T["Local Web UI"] --> S
+  R["CLI"] --> S["配置与运行时"]
+  T["本地 Web UI"] --> S
   T --> D
   T --> I
   T --> L
 ```
 
-## Runtime
+## 运行时
 
-- Node.js 20+
-- TypeScript
-- npm global package
-- Local-first runtime
+- Node.js 20+。
+- TypeScript。
+- npm 全局包。
+- 本地优先运行。
 
-## Recommended Stack
+## 推荐技术栈
 
 ### CLI
 
-- `commander` for command structure.
-- `@inquirer/prompts` for guided setup and settings.
-- `pino` for logging.
+- `commander`：命令结构。
+- `@inquirer/prompts`：交互式 setup/settings。
+- `pino`：日志。
 
-### Gateway and API
+### Gateway 和 API
 
-- `fastify` for local HTTP API and Web UI backend.
-- `@larksuiteoapi/node-sdk` for Feishu/Lark API and long connection support.
+- `fastify`：本地 HTTP API 和 Web UI 后端。
+- `@larksuiteoapi/node-sdk`：飞书/Lark API 和长连接能力。
 
 ### Web UI
 
-- React.
-- Vite.
-- TanStack Query.
-- TanStack Router.
-- Tailwind CSS.
-- Radix UI or shadcn/ui.
+- React。
+- Vite。
+- TanStack Query。
+- TanStack Router。
+- Tailwind CSS。
+- Radix UI 或 shadcn/ui。
 
-### Storage
+### 存储
 
-- SQLite for metadata, raw messages, jobs, settings, and facts.
-- Drizzle ORM for schema and migrations.
-- SQLite FTS5 for keyword retrieval.
-- LanceDB or another local embedded vector store for embeddings.
+- SQLite：元数据、原始消息、任务、配置、事实。
+- Drizzle ORM：schema 和 migration。
+- SQLite FTS5：关键词检索。
+- LanceDB 或其他本地嵌入式向量库：embedding 检索。
 
-### LLM and Embeddings
+### LLM 和 Embedding
 
-- OpenAI-compatible chat completions API.
-- OpenAI-compatible embeddings API.
-- Configurable base URL, API key, model names, and dimensions.
-- `doctor` must validate provider compatibility.
+- OpenAI-compatible chat completions API。
+- OpenAI-compatible embeddings API。
+- 可配置 base URL、API key、模型名和向量维度。
+- `doctor` 必须验证 provider 兼容性。
 
-### Parsers
+### 解析器
 
-- PDF: `pdf-parse` or `unpdf`.
-- DOCX: `mammoth`.
-- XLSX: `xlsx`.
-- PPTX: unzip XML extraction first, dedicated parser later if needed.
-- HTML/link content: `cheerio` plus readability extraction.
-- OCR: configurable path, with Tesseract.js or model-based OCR.
-- Audio: configurable OpenAI-compatible transcription first, local Whisper later.
+- PDF：`pdf-parse` 或 `unpdf`。
+- DOCX：`mammoth`。
+- XLSX：`xlsx`。
+- PPTX：先解压 XML 提取，之后再接专用 parser。
+- HTML/链接：`cheerio` 加 readability。
+- OCR：可配置路径，使用 Tesseract.js 或基于视觉模型的 OCR。
+- 音频：先支持可配置的 OpenAI-compatible transcription，之后支持本地 Whisper。
 
-## Local Data Layout
+## 本地数据布局
 
-Default:
+默认：
 
 ```text
 ~/.chattercatcher/
@@ -102,15 +102,15 @@ Default:
   cache/
 ```
 
-`config.json` stores non-sensitive configuration.
+`config.json` 存普通配置。
 
-`secrets.json` stores sensitive values:
+`secrets.json` 存敏感值：
 
-- Feishu App Secret.
-- LLM API key.
-- Embedding API key when separate.
+- 飞书 App Secret。
+- LLM API Key。
+- embedding API Key，若和 LLM 分开。
 
-## Core Data Model
+## 核心数据模型
 
 ### chats
 
@@ -221,76 +221,78 @@ created_at
 updated_at
 ```
 
-## Retrieval Design
+## RAG 设计
 
-Use hybrid retrieval:
+RAG 是强制架构路径，不能被 prompt 堆叠替代。
 
-1. Query rewrite and intent classification.
-2. Vector search over chunks.
-3. Keyword search through SQLite FTS5.
-4. Metadata filters by chat, time, sender, and source type.
-5. Recency-aware reranking.
-6. Fact-aware conflict resolution.
-7. LLM answer generation with citations.
+检索流程：
 
-The answer generator must receive compact evidence blocks, not raw unlimited chat history.
+1. 问题改写和意图识别。
+2. 对 chunk 做向量检索。
+3. 通过 SQLite FTS5 做关键词检索。
+4. 按群、时间、发送人、来源类型做元数据过滤。
+5. 引入时间权重和来源权重重排。
+6. 进入事实级冲突处理。
+7. LLM 只基于最终证据块生成答案和引用。
 
-## Conflict Resolution
+答案生成器只能接收压缩后的证据块，不能接收无限制原始聊天历史。
 
-Conflict handling must not be plain "latest wins".
+## 冲突处理
 
-Use the following checks:
+冲突处理不能简单“最新消息赢”。
 
-- Same or highly similar subject.
-- Same predicate.
-- Newer source timestamp.
-- Update language such as:
-  - 改到
-  - 更新为
-  - 最终定
-  - 以这个为准
-  - 不是之前那个
-- Sufficient confidence that the message states a fact, not a suggestion.
+必须检查：
 
-Statuses:
+- 主体相同或高度相似。
+- 谓词相同。
+- 新来源时间更晚。
+- 存在更新语义，例如：
+  - 改到。
+  - 更新为。
+  - 最终定。
+  - 以这个为准。
+  - 不是之前那个。
+- 有足够置信度认为消息陈述的是事实，而不是建议。
 
-- `active`: current best-known fact.
-- `superseded`: old fact replaced by a newer confirmed fact.
-- `ambiguous`: relevant evidence that should not overwrite active facts.
+状态：
 
-## Feishu/Lark Gateway
+- `active`：当前最可信事实。
+- `superseded`：被较新确认事实取代的旧事实。
+- `ambiguous`：相关证据，但不覆盖 active 事实。
 
-MVP should follow the local gateway pattern:
+## 飞书/Lark Gateway
 
-- The user creates a Feishu/Lark self-built app.
-- The user enables bot capability.
-- The user configures App ID and App Secret.
-- The user enables long connection event subscription.
-- ChatterCatcher opens the long connection from the local machine.
-- Incoming message events are normalized into internal message objects.
-- Replies are sent through the Feishu/Lark bot API.
+MVP 采用本地 Gateway 模式：
 
-Required event:
+- 用户创建飞书/Lark 自建应用。
+- 用户启用机器人能力。
+- 用户配置 App ID 和 App Secret。
+- 用户启用长连接事件订阅。
+- ChatterCatcher 从本机打开长连接。
+- 传入消息事件被归一化为内部 message。
+- 回复通过飞书/Lark Bot API 发送。
+
+必需事件：
 
 ```text
 im.message.receive_v1
 ```
 
-Required behavior:
+必需行为：
 
-- Groups require mention to answer by default.
-- All messages are still captured unless disabled by settings.
-- Direct messages can be supported later.
+- 群聊默认需要 `@机器人` 才回答。
+- 除非配置禁用，否则所有消息仍会被捕获。
+- 私聊可以后续支持。
 
-## Configuration
+## 配置
 
-Configuration must be editable from:
+配置必须能从这些入口编辑：
 
 - `chattercatcher setup`
 - `chattercatcher settings`
-- local Web UI
+- 本地 Web UI
 
-Important fields:
+关键字段：
 
 ```json
 {
@@ -319,9 +321,9 @@ Important fields:
 }
 ```
 
-Secrets must not be stored in this file.
+secrets 不得存入该文件。
 
-## Operational Commands
+## 运维命令
 
 ```bash
 chattercatcher setup
@@ -334,34 +336,33 @@ chattercatcher index rebuild
 chattercatcher web start
 ```
 
-## Testing Strategy
+## 测试策略
 
-Testing should be layered:
+分层测试：
 
-- Unit tests for pure logic:
-  - config validation
-  - message normalization
-  - chunking
-  - conflict resolution
-  - citation formatting
-- Integration tests for:
-  - SQLite migrations
-  - vector store adapter
-  - indexing jobs
-  - mocked Feishu events
-  - mocked OpenAI-compatible providers
-- UI tests for:
-  - settings page
-  - history page
-  - file library
-  - QA logs
+- 纯逻辑单测：
+  - 配置校验。
+  - 消息归一化。
+  - 切块。
+  - 冲突处理。
+  - 引用格式。
+- 集成测试：
+  - SQLite migration。
+  - 向量库 adapter。
+  - 索引任务。
+  - mock 飞书事件。
+  - mock OpenAI-compatible provider。
+- UI 测试：
+  - settings 页面。
+  - history 页面。
+  - 文件库。
+  - 问答日志。
 
-Manual smoke tests should cover:
+手工 smoke test：
 
-- Fresh setup.
-- Gateway start.
-- Message capture.
-- Mention-triggered answer.
-- Reindex.
-- Web UI inspection.
-
+- 全新 setup。
+- Gateway start。
+- 消息捕获。
+- `@机器人` 触发回答。
+- 重建索引。
+- Web UI 检查。

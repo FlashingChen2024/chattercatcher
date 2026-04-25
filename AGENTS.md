@@ -1,72 +1,89 @@
-# ChatterCatcher Agent Guidelines
+# ChatterCatcher 项目协作规范
 
-## Project Mission
+## 项目使命
 
-ChatterCatcher is a local-first family knowledge bot for Feishu/Lark groups. Its job is to quietly capture important information from everyday chat, files, images, links, and audio, then answer questions with concise answers and traceable citations.
+ChatterCatcher 是一个本地优先的家庭飞书/Lark 群知识机器人。它的职责是静默捕获日常聊天、文件、图片、链接和语音中的重要信息，在用户提问时用简短答案和可追溯引用回答。
 
-It is not an autonomous agent. It must not execute arbitrary external actions on behalf of users. The product exists to preserve, retrieve, and explain family knowledge.
+它不是自主 Agent。它不能代表用户执行任意外部操作。这个产品只做三件事：保存、检索、解释家庭知识。
 
-## First Principles
+## 第一性原理
 
-Every design decision must be justified from these fundamentals:
+任何产品和技术决策都必须回到这些基本事实：
 
-1. Family information is scattered in casual conversation.
-2. Retrieval without evidence is not trustworthy.
-3. Newer information is often more useful, but only when it is clearly about the same fact.
-4. Local ownership matters because family chat data is private.
-5. Installation must be simple enough for one technical family member to maintain.
-6. The bot should reduce interruption, not create another noisy participant.
+1. 家庭重要信息经常散落在闲聊里。
+2. 没有证据的回答不可信。
+3. 更新的信息通常更有用，但只有在明确是同一事实的更新时才应覆盖旧信息。
+4. 家庭聊天数据是隐私数据，默认必须本地掌控。
+5. 安装和维护必须足够简单，让家里一个懂技术的人能长期运行。
+6. 机器人应该减少打扰，而不是变成群里的噪音。
 
-When tradeoffs arise, optimize in this order:
+取舍优先级：
 
-1. Correctness and source traceability.
-2. Privacy and local data control.
-3. A working end-to-end MVP.
-4. Operational simplicity.
-5. Extensibility.
+1. 正确性和来源可追溯。
+2. 隐私和本地数据控制。
+3. 端到端可用的 MVP。
+4. 运维简单。
+5. 长期可扩展。
 
-## Development Workflow
+## RAG 强制原则
 
-- Keep changes small and coherent.
-- Finish one logical unit of work at a time.
-- After every completed logical unit, run appropriate self-tests.
-- After self-tests pass, create one git commit for that unit.
-- Do not mix unrelated changes in one commit.
-- Do not leave half-finished behavior hidden behind undocumented assumptions.
+ChatterCatcher 必须使用 RAG。禁止把大量历史聊天、文件全文或任意长上下文直接堆给 LLM。
 
-Required loop:
+所有问答必须走这个路径：
 
 ```text
-understand -> implement -> self-test -> fix -> commit -> report
+问题理解 -> 检索 -> 证据重排 -> 冲突处理 -> 基于证据生成答案 -> 输出引用
 ```
 
-If tests cannot be run, document exactly why in the final response and in the commit message when relevant.
+硬性要求：
 
-## Git Rules
+- LLM 回答只能基于检索出的证据块和必要系统提示。
+- 检索证据必须保留来源元数据。
+- 回答事实性问题时必须带引用。
+- 如果检索不到证据，必须说不知道。
+- 上下文窗口不是知识库，不能用“塞更多上下文”替代索引、检索和引用。
 
-- Commit after each completed task or milestone.
-- Use concise conventional commit style where practical:
-  - `docs: add product requirements`
-  - `feat: add feishu gateway`
-  - `fix: handle empty retrieval results`
-  - `test: cover conflict resolution`
-- Never rewrite or discard user changes unless explicitly requested.
-- Before committing, check `git status --short`.
-- A commit should include only files related to the completed task.
+## 开发流程
 
-## Self-Test Requirements
+- 每次只做一个清晰的逻辑单元。
+- 完成一个逻辑单元后必须自测。
+- 自测通过后必须创建一次 git commit。
+- 不要把无关改动混进同一个提交。
+- 不要留下未说明的半成品行为。
 
-Every code change must include a self-test appropriate to the risk:
+固定循环：
 
-- CLI changes: run the command locally or add/update automated tests.
-- Gateway changes: verify startup, config loading, and graceful shutdown.
-- Feishu integration changes: use mocks for unit tests and document any manual Feishu validation.
-- RAG changes: test retrieval, citation presence, and empty-result behavior.
-- Conflict resolution changes: test old/new facts, ambiguous discussion, and explicit update wording.
-- File parsing changes: test at least one representative fixture for the touched format.
-- Web UI changes: run build checks and inspect the affected page locally.
+```text
+理解 -> 实现 -> 自测 -> 修复 -> 提交 -> 汇报
+```
 
-Minimum expected commands once the project is scaffolded:
+如果测试无法运行，必须在最终回复里说明原因；如果和提交相关，也要体现在提交信息或后续说明里。
+
+## Git 规则
+
+- 每完成一个任务或里程碑就提交一次。
+- 提交信息优先使用简洁的 conventional commit：
+  - `docs: 中文化项目文档`
+  - `feat: 添加飞书网关`
+  - `fix: 处理空检索结果`
+  - `test: 覆盖冲突处理`
+- 不得重写或丢弃用户已有改动，除非用户明确要求。
+- 提交前必须检查 `git status --short`。
+- 一个提交只包含当前任务相关文件。
+
+## 自测要求
+
+每次代码改动必须按风险选择合适的自测：
+
+- CLI 改动：本地运行命令，或添加/更新自动化测试。
+- Gateway 改动：验证启动、配置加载、优雅关闭。
+- 飞书集成改动：单测使用 mock；真实飞书验证要记录手工验证步骤。
+- RAG 改动：测试检索、引用、空结果行为，确保没有全量上下文堆叠。
+- 冲突处理改动：测试旧事实、新事实、讨论语气、明确更新语气。
+- 文件解析改动：至少为涉及格式准备一个代表性 fixture。
+- Web UI 改动：运行构建检查，并本地查看受影响页面。
+
+项目脚手架完成后，最低自测命令应包括：
 
 ```bash
 npm run lint
@@ -75,66 +92,66 @@ npm test
 npm run build
 ```
 
-If a command does not exist yet, either add it as part of project setup or explicitly state that the project has not reached that stage.
+如果命令还不存在，要么补齐，要么明确说明项目尚未到该阶段。
 
-## Product Constraints
+## 产品约束
 
-- Default deployment is local-first.
-- Default Web UI bind address must be `127.0.0.1`.
-- All answers must include citations unless the bot is explicitly saying it does not know.
-- The bot must not treat casual suggestions as confirmed facts.
-- The bot must preserve historical evidence when newer confirmed facts supersede older ones.
-- Files are first-class knowledge sources, equivalent to chat messages.
-- The first supported chat platform is Feishu/Lark only.
-- LLM and embedding providers must use OpenAI-compatible APIs in the MVP.
+- 默认本地部署。
+- 默认 Web UI 只监听 `127.0.0.1`。
+- 所有事实性回答必须有引用；除非机器人明确说不知道。
+- 不得把闲聊建议当成确定事实。
+- 新事实覆盖旧事实时，必须保留历史证据。
+- 文件是一等知识源，和聊天消息同等重要。
+- MVP 只支持飞书/Lark。
+- MVP 的 LLM 和 embedding 提供商必须兼容 OpenAI API。
 
-## Architecture Constraints
+## 架构约束
 
-- Runtime: Node.js 20+.
-- Language: TypeScript.
-- CLI-first product surface.
-- Local metadata storage should start with SQLite.
-- Vector storage should be local and RAG-friendly.
-- Keyword retrieval should coexist with vector retrieval.
-- Background jobs must be observable from CLI and Web UI.
-- Avoid SaaS-only dependencies for core local operation.
+- 运行时：Node.js 20+。
+- 语言：TypeScript。
+- 产品入口：CLI 优先。
+- 元数据存储：SQLite 起步。
+- 向量存储：本地、适合 RAG。
+- 关键词检索必须和向量检索并存。
+- 后台任务必须能从 CLI 和 Web UI 观察。
+- 核心本地运行不能依赖 SaaS-only 服务。
 
-## Documentation Rules
+## 文档规则
 
-- Product decisions belong in `docs/PRD.md`.
-- Milestones and implementation sequencing belong in `docs/DEVELOPMENT_PLAN.md`.
-- Architecture and technical stack belong in `docs/TECHNICAL_ARCHITECTURE.md`.
-- Update documentation when behavior or scope changes.
-- Prefer concrete acceptance criteria over vague intent.
+- 以后所有项目文档默认使用中文。
+- 产品决策写入 `docs/PRD.md`。
+- 里程碑和实施顺序写入 `docs/DEVELOPMENT_PLAN.md`。
+- 架构和技术栈写入 `docs/TECHNICAL_ARCHITECTURE.md`。
+- 行为或范围变化时同步更新文档。
+- 优先写明确验收标准，不写空泛愿景。
 
-## Security and Privacy
+## 安全和隐私
 
-- Do not log secrets.
-- Do not print full API keys, App Secrets, or tokens.
-- Store secrets separately from non-sensitive config.
-- Treat chat history, files, OCR output, and transcripts as private data.
-- Do not expose the local Web UI publicly by default.
-- Any remote model call must be clear from configuration.
+- 不记录 secrets。
+- 不打印完整 API Key、App Secret 或 token。
+- secrets 必须和普通配置分开保存。
+- 聊天历史、文件、OCR 结果、语音转写都视为隐私数据。
+- 本地 Web UI 默认不得暴露到公网。
+- 任何远程模型调用都必须能从配置中看出来。
 
-## Answer Quality Standard
+## 回答质量标准
 
-Bot answers should be:
+机器人回答应该：
 
-- Short.
-- Direct.
-- Evidence-backed.
-- Clear about uncertainty.
-- Explicit when newer information supersedes older information.
+- 简短。
+- 直接。
+- 有证据。
+- 明确不确定性。
+- 在新信息覆盖旧信息时说清楚。
 
-Bad answer:
+差回答：
 
 ```text
 活动应该是 6 月 30 日。
 ```
 
-Good answer:
+好回答：
 
 ```text
 端午活动目前是 2026/6/30。来源：老妈在 2026-xx-xx 说“改成 2026/6/30”。此前 2026/5/30 是旧信息。
 ```
-
