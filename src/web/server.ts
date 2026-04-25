@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import type { AppConfig } from "../config/schema.js";
 import { openDatabase } from "../db/database.js";
+import { FileJobRepository } from "../files/jobs.js";
 import { getGatewayStatus } from "../gateway/index.js";
 import { MessageRepository } from "../messages/repository.js";
 
@@ -125,6 +126,10 @@ function buildHtml(): string {
             <div id="files" class="empty">正在读取...</div>
           </section>
           <section>
+            <h2>解析任务</h2>
+            <div id="file-jobs" class="empty">正在读取...</div>
+          </section>
+          <section>
             <h2>本地操作</h2>
             <p><code>chattercatcher settings</code> 修改配置。</p>
             <p><code>chattercatcher files add &lt;path...&gt;</code> 导入文本、DOCX 或 PDF 文件。</p>
@@ -138,6 +143,7 @@ function buildHtml(): string {
       const messages = document.querySelector("#messages");
       const chats = document.querySelector("#chats");
       const files = document.querySelector("#files");
+      const fileJobs = document.querySelector("#file-jobs");
       const refresh = document.querySelector("#refresh");
 
       function fmt(value) {
@@ -241,17 +247,44 @@ function buildHtml(): string {
         \`;
       }
 
+      function renderFileJobs(items) {
+        if (items.length === 0) {
+          fileJobs.className = "empty";
+          fileJobs.textContent = "还没有文件解析任务。";
+          return;
+        }
+        fileJobs.className = "";
+        fileJobs.innerHTML = \`
+          <table>
+            <thead><tr><th>文件</th><th>状态</th></tr></thead>
+            <tbody>
+              \${items.map((item) => \`
+                <tr>
+                  <td>
+                    <div>\${escapeHtml(item.fileName)}</div>
+                    <div class="path" title="\${escapeHtml(item.error || item.storedPath)}">\${escapeHtml(item.error || item.storedPath)}</div>
+                  </td>
+                  <td>\${escapeHtml(item.status)}</td>
+                </tr>
+              \`).join("")}
+            </tbody>
+          </table>
+        \`;
+      }
+
       async function load() {
-        const [status, recent, chatList, fileList] = await Promise.all([
+        const [status, recent, chatList, fileList, jobList] = await Promise.all([
           fetch("/api/status").then((response) => response.json()),
           fetch("/api/messages/recent?limit=20").then((response) => response.json()),
           fetch("/api/chats").then((response) => response.json()),
           fetch("/api/files").then((response) => response.json()),
+          fetch("/api/file-jobs").then((response) => response.json()),
         ]);
         renderMetrics(status);
         renderMessages(recent.items);
         renderChats(chatList.items);
         renderFiles(fileList.items);
+        renderFileJobs(jobList.items);
       }
 
       refresh.addEventListener("click", () => void load());
@@ -270,6 +303,7 @@ export function createWebApp(config: AppConfig): FastifyInstance {
   const app = Fastify({ logger: false });
   const database = openDatabase(config);
   const messages = new MessageRepository(database);
+  const fileJobs = new FileJobRepository(database);
 
   app.addHook("onClose", async () => {
     database.close();
@@ -303,6 +337,13 @@ export function createWebApp(config: AppConfig): FastifyInstance {
     const limit = parseLimit((request.query as { limit?: string }).limit, 50, 200);
     return {
       items: messages.listFiles(limit),
+    };
+  });
+
+  app.get("/api/file-jobs", async (request) => {
+    const limit = parseLimit((request.query as { limit?: string }).limit, 50, 200);
+    return {
+      items: fileJobs.list(limit),
     };
   });
 

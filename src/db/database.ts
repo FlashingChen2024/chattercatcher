@@ -65,6 +65,21 @@ export function migrateDatabase(database: SqliteDatabase): void {
       message_id UNINDEXED,
       tokenize = 'unicode61'
     );
+
+    CREATE TABLE IF NOT EXISTS file_jobs (
+      id TEXT PRIMARY KEY,
+      source_path TEXT NOT NULL,
+      stored_path TEXT,
+      file_name TEXT NOT NULL,
+      status TEXT NOT NULL,
+      parser TEXT,
+      message_id TEXT,
+      bytes INTEGER,
+      characters INTEGER,
+      warnings_json TEXT NOT NULL DEFAULT '[]',
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
 }
-

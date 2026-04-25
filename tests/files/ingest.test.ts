@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultConfig } from "../../src/config/schema.js";
 import { openDatabase } from "../../src/db/database.js";
 import { ingestLocalFile } from "../../src/files/ingest.js";
+import { FileJobRepository } from "../../src/files/jobs.js";
 import { MessageRepository } from "../../src/messages/repository.js";
 import { MessageFtsRetriever } from "../../src/rag/message-retriever.js";
 import { createDocxBuffer } from "./docx-fixture.js";
@@ -30,11 +31,13 @@ describe("local file ingest", () => {
 
     try {
       const messages = new MessageRepository(database);
-      const result = await ingestLocalFile({ config, messages, filePath: sourcePath });
+      const jobs = new FileJobRepository(database);
+      const result = await ingestLocalFile({ config, messages, jobs, filePath: sourcePath });
 
       expect(result.fileName).toBe("activity.md");
       expect(result.parser).toBe("text");
       expect(result.characters).toBeGreaterThan(0);
+      expect(jobs.list()[0]).toMatchObject({ status: "indexed", parser: "text" });
       await expect(fs.stat(result.storedPath)).resolves.toBeTruthy();
 
       const evidence = await new MessageFtsRetriever(messages).retrieve("端午活动什么时候");
@@ -50,7 +53,7 @@ describe("local file ingest", () => {
     }
   });
 
-  it("拒绝暂不支持的二进制扩展名", async () => {
+  it("拒绝暂不支持的扩展名并记录失败任务", async () => {
     const sourcePath = path.join(testDir, "scan.exe");
     await fs.writeFile(sourcePath, "fake", "utf8");
 
@@ -59,9 +62,11 @@ describe("local file ingest", () => {
     const database = openDatabase(config);
 
     try {
+      const jobs = new FileJobRepository(database);
       await expect(
-        ingestLocalFile({ config, messages: new MessageRepository(database), filePath: sourcePath }),
+        ingestLocalFile({ config, messages: new MessageRepository(database), jobs, filePath: sourcePath }),
       ).rejects.toThrow("暂不支持该文件类型");
+      expect(jobs.list()[0]).toMatchObject({ status: "failed" });
     } finally {
       database.close();
     }

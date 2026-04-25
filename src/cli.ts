@@ -14,6 +14,7 @@ import { FeishuQuestionHandler } from "./feishu/question.js";
 import { FeishuResourceDownloader } from "./feishu/resource-downloader.js";
 import { FeishuMessageSender } from "./feishu/sender.js";
 import { ingestLocalFile } from "./files/ingest.js";
+import { FileJobRepository } from "./files/jobs.js";
 import { GatewayIngestor } from "./gateway/ingest.js";
 import { getGatewayStatus } from "./gateway/index.js";
 import { createChatModel, createEmbeddingModel } from "./llm/openai-compatible.js";
@@ -270,15 +271,48 @@ files
     const config = await loadConfig();
     const database = openDatabase(config);
     const messages = new MessageRepository(database);
+    const jobs = new FileJobRepository(database);
 
     try {
       for (const filePath of paths) {
-        const result = await ingestLocalFile({ config, messages, filePath });
+        const result = await ingestLocalFile({ config, messages, jobs, filePath });
         console.log(
           `已导入文件：${result.fileName}，解析器=${result.parser}，字符数=${result.characters}，消息ID=${result.messageId}`,
         );
       }
       console.log("文件已进入 SQLite FTS 检索；如已配置 embedding，可运行 chattercatcher index rebuild 更新 LanceDB 向量索引。");
+    } finally {
+      database.close();
+    }
+  });
+
+files
+  .command("jobs")
+  .description("查看文件解析任务状态")
+  .option("--limit <number>", "最多显示的任务数", "50")
+  .action(async (options: { limit: string }) => {
+    const config = await loadConfig();
+    const database = openDatabase(config);
+    const limit = Number(options.limit);
+
+    try {
+      const jobs = new FileJobRepository(database).list(Number.isFinite(limit) ? limit : 50);
+      if (jobs.length === 0) {
+        console.log("还没有文件解析任务。");
+        return;
+      }
+
+      for (const job of jobs) {
+        console.log(
+          `${job.fileName} | 状态=${job.status} | 解析器=${job.parser ?? "-"} | 更新时间=${job.updatedAt}`,
+        );
+        if (job.error) {
+          console.log(`  错误：${job.error}`);
+        }
+        if (job.storedPath) {
+          console.log(`  本地保存：${job.storedPath}`);
+        }
+      }
     } finally {
       database.close();
     }

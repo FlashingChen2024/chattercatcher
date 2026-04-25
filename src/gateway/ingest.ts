@@ -6,6 +6,7 @@ import {
   type FeishuReceiveMessageEvent,
 } from "../feishu/normalize.js";
 import type { FeishuDownloadedResource, FeishuResourceDownloader } from "../feishu/resource-downloader.js";
+import { FileJobRepository } from "../files/jobs.js";
 import { MessageRepository } from "../messages/repository.js";
 import type { IngestMessageInput } from "../messages/types.js";
 
@@ -47,9 +48,11 @@ function extractAttachment(message: IngestMessageInput): FeishuAttachmentMetadat
 
 export class GatewayIngestor {
   private readonly messages: MessageRepository;
+  private readonly jobs: FileJobRepository;
 
   constructor(database: SqliteDatabase) {
     this.messages = new MessageRepository(database);
+    this.jobs = new FileJobRepository(database);
   }
 
   ingestFeishuEvent(payload: FeishuReceiveMessageEvent): GatewayIngestResult {
@@ -102,6 +105,7 @@ export class GatewayIngestor {
     const indexedMessageId = await ingestLocalFile({
       config: input.config,
       messages: this.messages,
+      jobs: this.jobs,
       filePath: downloaded.storedPath,
     }).then((file) => file.messageId);
 
