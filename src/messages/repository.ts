@@ -153,6 +153,7 @@ export class MessageRepository {
           m.id AS messageId,
           mc.text AS text,
           1.0 AS score,
+          m.message_type AS messageType,
           c.name AS chatName,
           m.sender_name AS senderName,
           m.sent_at AS sentAt
@@ -175,6 +176,7 @@ export class MessageRepository {
           m.id AS messageId,
           mc.text AS text,
           1.0 AS score,
+          m.message_type AS messageType,
           c.name AS chatName,
           m.sender_name AS senderName,
           m.sent_at AS sentAt
@@ -200,6 +202,7 @@ export class MessageRepository {
           fts.message_id AS messageId,
           mc.text AS text,
           bm25(message_chunks_fts) * -1 AS score,
+          m.message_type AS messageType,
           c.name AS chatName,
           m.sender_name AS senderName,
           m.sent_at AS sentAt
@@ -237,6 +240,7 @@ export class MessageRepository {
           m.id AS messageId,
           mc.text AS text,
           0.1 AS score,
+          m.message_type AS messageType,
           c.name AS chatName,
           m.sender_name AS senderName,
           m.sent_at AS sentAt

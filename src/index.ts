@@ -7,6 +7,7 @@ export * from "./feishu/gateway.js";
 export * from "./feishu/normalize.js";
 export * from "./feishu/question.js";
 export * from "./feishu/sender.js";
+export * from "./files/ingest.js";
 export * from "./gateway/ingest.js";
 export * from "./llm/openai-compatible.js";
 export * from "./messages/chunker.js";

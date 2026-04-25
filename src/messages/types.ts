@@ -40,8 +40,8 @@ export interface MessageSearchResult {
   messageId: string;
   text: string;
   score: number;
+  messageType: string;
   chatName: string;
   senderName: string;
   sentAt: string;
 }
-

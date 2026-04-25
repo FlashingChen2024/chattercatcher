@@ -12,6 +12,7 @@ import { createFeishuGateway } from "./feishu/gateway.js";
 import type { FeishuReceiveMessageEvent } from "./feishu/normalize.js";
 import { FeishuQuestionHandler } from "./feishu/question.js";
 import { FeishuMessageSender } from "./feishu/sender.js";
+import { ingestLocalFile } from "./files/ingest.js";
 import { GatewayIngestor } from "./gateway/ingest.js";
 import { getGatewayStatus } from "./gateway/index.js";
 import { createChatModel, createEmbeddingModel } from "./llm/openai-compatible.js";
@@ -256,6 +257,28 @@ index.command("rebuild").description("重建 LanceDB 向量索引").option("--li
     database.close();
   }
 });
+
+const files = program.command("files").description("管理本地文件知识源");
+
+files
+  .command("add")
+  .description("把本地文本类文件保存到数据目录并写入 RAG 知识库")
+  .argument("<paths...>", "文件路径，支持 txt、md、json、csv、tsv、log")
+  .action(async (paths: string[]) => {
+    const config = await loadConfig();
+    const database = openDatabase(config);
+    const messages = new MessageRepository(database);
+
+    try {
+      for (const filePath of paths) {
+        const result = await ingestLocalFile({ config, messages, filePath });
+        console.log(`已导入文件：${result.fileName}，字符数=${result.characters}，消息ID=${result.messageId}`);
+      }
+      console.log("文件已进入 SQLite FTS 检索；如已配置 embedding，可运行 chattercatcher index rebuild 更新 LanceDB 向量索引。");
+    } finally {
+      database.close();
+    }
+  });
 
 program.command("logs").description("查看日志").option("--follow", "持续输出日志").action((options: { follow?: boolean }) => {
   console.log(options.follow ? "日志跟随将在日志文件接入后实现。" : "日志查看将在日志文件接入后实现。");

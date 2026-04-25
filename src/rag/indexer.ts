@@ -1,6 +1,7 @@
 import type { EmbeddingModel } from "./embedding.js";
 import type { VectorRecord, VectorStore } from "./vector-store.js";
 import type { MessageRepository } from "../messages/repository.js";
+import type { MessageSearchResult } from "../messages/types.js";
 
 export interface VectorIndexStats {
   chunks: number;
@@ -34,12 +35,7 @@ export async function indexMessageChunks(input: {
         id: chunk.chunkId,
         text: chunk.text,
         score: 1,
-        source: {
-          type: "message",
-          label: chunk.chatName,
-          sender: chunk.senderName,
-          timestamp: chunk.sentAt,
-        },
+        source: toEvidenceSource(chunk),
       },
     });
   }
@@ -52,3 +48,19 @@ export async function indexMessageChunks(input: {
   };
 }
 
+function toEvidenceSource(chunk: MessageSearchResult): VectorRecord["evidence"]["source"] {
+  if (chunk.messageType === "file") {
+    return {
+      type: "file",
+      label: chunk.senderName,
+      timestamp: chunk.sentAt,
+    };
+  }
+
+  return {
+    type: "message",
+    label: chunk.chatName,
+    sender: chunk.senderName,
+    timestamp: chunk.sentAt,
+  };
+}
