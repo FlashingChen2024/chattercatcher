@@ -94,7 +94,7 @@ export class GatewayIngestor {
         ...result,
         attachment: {
           downloaded,
-          skippedReason: "附件已下载，但当前文件类型暂不支持文本解析。",
+          skippedReason: "附件已下载，但当前文件类型暂不支持解析。",
         },
       };
     }

@@ -7,6 +7,7 @@ import { openDatabase } from "../../src/db/database.js";
 import { ingestLocalFile } from "../../src/files/ingest.js";
 import { MessageRepository } from "../../src/messages/repository.js";
 import { MessageFtsRetriever } from "../../src/rag/message-retriever.js";
+import { createDocxBuffer } from "./docx-fixture.js";
 
 let testDir: string;
 
@@ -32,6 +33,7 @@ describe("local file ingest", () => {
       const result = await ingestLocalFile({ config, messages, filePath: sourcePath });
 
       expect(result.fileName).toBe("activity.md");
+      expect(result.parser).toBe("text");
       expect(result.characters).toBeGreaterThan(0);
       await expect(fs.stat(result.storedPath)).resolves.toBeTruthy();
 
@@ -49,7 +51,7 @@ describe("local file ingest", () => {
   });
 
   it("拒绝暂不支持的二进制扩展名", async () => {
-    const sourcePath = path.join(testDir, "scan.pdf");
+    const sourcePath = path.join(testDir, "scan.exe");
     await fs.writeFile(sourcePath, "fake", "utf8");
 
     const config = createDefaultConfig();
@@ -60,6 +62,26 @@ describe("local file ingest", () => {
       await expect(
         ingestLocalFile({ config, messages: new MessageRepository(database), filePath: sourcePath }),
       ).rejects.toThrow("暂不支持该文件类型");
+    } finally {
+      database.close();
+    }
+  });
+
+  it("解析 DOCX 后写入 RAG 检索库", async () => {
+    const sourcePath = path.join(testDir, "activity.docx");
+    await fs.writeFile(sourcePath, await createDocxBuffer("附件里写着端午活动改到 2026/6/30。"));
+
+    const config = createDefaultConfig();
+    config.storage.dataDir = path.join(testDir, "data");
+    const database = openDatabase(config);
+
+    try {
+      const messages = new MessageRepository(database);
+      const result = await ingestLocalFile({ config, messages, filePath: sourcePath });
+      const evidence = await new MessageFtsRetriever(messages).retrieve("附件端午活动");
+
+      expect(result.parser).toBe("docx");
+      expect(evidence.some((item) => item.source.type === "file" && item.text.includes("2026/6/30"))).toBe(true);
     } finally {
       database.close();
     }

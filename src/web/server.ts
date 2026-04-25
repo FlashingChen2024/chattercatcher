@@ -127,7 +127,7 @@ function buildHtml(): string {
           <section>
             <h2>本地操作</h2>
             <p><code>chattercatcher settings</code> 修改配置。</p>
-            <p><code>chattercatcher files add &lt;path...&gt;</code> 导入文本类文件。</p>
+            <p><code>chattercatcher files add &lt;path...&gt;</code> 导入文本、DOCX 或 PDF 文件。</p>
             <p><code>chattercatcher doctor</code> 检查飞书、模型、RAG 和本地存储。</p>
           </section>
         </aside>
@@ -218,7 +218,7 @@ function buildHtml(): string {
       function renderFiles(items) {
         if (items.length === 0) {
           files.className = "empty";
-          files.textContent = "还没有文件。可先运行 chattercatcher files add <path...> 导入文本类文件。";
+          files.textContent = "还没有文件。可先运行 chattercatcher files add <path...> 导入文本、DOCX 或 PDF 文件。";
           return;
         }
         files.className = "";

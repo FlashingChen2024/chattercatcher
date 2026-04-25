@@ -4,8 +4,7 @@ import path from "node:path";
 import type { AppConfig } from "../config/schema.js";
 import { resolveHomePath } from "../config/paths.js";
 import type { MessageRepository } from "../messages/repository.js";
-
-const TEXT_EXTENSIONS = new Set([".txt", ".md", ".markdown", ".json", ".csv", ".tsv", ".log"]);
+import { describeSupportedParseTypes, isSupportedParseFile, parseFileToText } from "./parser.js";
 
 export interface IngestLocalFileResult {
   messageId: string;
@@ -14,17 +13,18 @@ export interface IngestLocalFileResult {
   fileName: string;
   bytes: number;
   characters: number;
+  parser: string;
+  warnings: string[];
 }
 
 export function isSupportedTextFile(filePath: string): boolean {
-  const extension = path.extname(filePath).toLowerCase();
-  return TEXT_EXTENSIONS.has(extension);
+  return isSupportedParseFile(filePath);
 }
 
 function ensureSupportedTextFile(filePath: string): void {
   if (!isSupportedTextFile(filePath)) {
     const extension = path.extname(filePath).toLowerCase();
-    throw new Error(`暂不支持该文件类型：${extension || "无扩展名"}。当前支持 txt、md、json、csv、tsv、log。`);
+    throw new Error(`暂不支持该文件类型：${extension || "无扩展名"}。当前支持 ${describeSupportedParseTypes()}。`);
   }
 }
 
@@ -47,7 +47,12 @@ export async function ingestLocalFile(input: {
   }
 
   const fileName = path.basename(sourcePath);
-  const text = await fs.readFile(sourcePath, "utf8");
+  const parsed = await parseFileToText(sourcePath);
+  const text = parsed.text.trim();
+  if (!text) {
+    throw new Error(`文件没有可索引文本：${sourcePath}`);
+  }
+
   const fileDir = path.join(resolveHomePath(input.config.storage.dataDir), "files");
   await fs.mkdir(fileDir, { recursive: true });
 
@@ -69,6 +74,8 @@ export async function ingestLocalFile(input: {
       storedPath,
       bytes: stat.size,
       fileName,
+      parser: parsed.parser,
+      parserWarnings: parsed.warnings,
     },
   });
 
@@ -79,5 +86,7 @@ export async function ingestLocalFile(input: {
     fileName,
     bytes: stat.size,
     characters: text.length,
+    parser: parsed.parser,
+    warnings: parsed.warnings,
   };
 }

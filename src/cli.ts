@@ -264,8 +264,8 @@ const files = program.command("files").description("管理本地文件知识源"
 
 files
   .command("add")
-  .description("把本地文本类文件保存到数据目录并写入 RAG 知识库")
-  .argument("<paths...>", "文件路径，支持 txt、md、json、csv、tsv、log")
+  .description("把本地文件解析、保存到数据目录并写入 RAG 知识库")
+  .argument("<paths...>", "文件路径，支持 txt、md、json、csv、tsv、log、docx、pdf")
   .action(async (paths: string[]) => {
     const config = await loadConfig();
     const database = openDatabase(config);
@@ -274,7 +274,9 @@ files
     try {
       for (const filePath of paths) {
         const result = await ingestLocalFile({ config, messages, filePath });
-        console.log(`已导入文件：${result.fileName}，字符数=${result.characters}，消息ID=${result.messageId}`);
+        console.log(
+          `已导入文件：${result.fileName}，解析器=${result.parser}，字符数=${result.characters}，消息ID=${result.messageId}`,
+        );
       }
       console.log("文件已进入 SQLite FTS 检索；如已配置 embedding，可运行 chattercatcher index rebuild 更新 LanceDB 向量索引。");
     } finally {
@@ -295,7 +297,7 @@ files
     try {
       const files = messages.listFiles(Number.isFinite(limit) ? limit : 50);
       if (files.length === 0) {
-        console.log("还没有文件。可运行 chattercatcher files add <path...> 导入文本类文件。");
+        console.log("还没有文件。可运行 chattercatcher files add <path...> 导入文件。");
         return;
       }
 
