@@ -2,6 +2,10 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 
+function defaultDataDir(): string {
+  return path.join(process.env.CHATTERCATCHER_HOME || path.join(os.homedir(), ".chattercatcher"), "data");
+}
+
 export const appConfigSchema = z.object({
   feishu: z.object({
     domain: z.enum(["feishu", "lark"]).default("feishu"),
@@ -19,7 +23,7 @@ export const appConfigSchema = z.object({
     dimension: z.number().int().positive().nullable().default(null),
   }),
   storage: z.object({
-    dataDir: z.string().default(path.join(os.homedir(), ".chattercatcher", "data")),
+    dataDir: z.string().default(defaultDataDir),
   }),
   web: z.object({
     host: z.string().default("127.0.0.1"),

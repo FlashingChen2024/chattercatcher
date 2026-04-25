@@ -25,6 +25,7 @@ describe("config store", () => {
 
     expect(config.web.host).toBe("127.0.0.1");
     expect(config.web.port).toBe(3878);
+    expect(config.storage.dataDir).toBe(path.join(testHome, "data"));
     expect(secrets.llm.apiKey).toBe("");
   });
 

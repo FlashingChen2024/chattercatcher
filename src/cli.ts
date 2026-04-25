@@ -5,8 +5,10 @@ import { loadConfig, loadSecrets, resetConfigFiles, saveConfig, saveSecrets, ens
 import { getChatterCatcherHome, getConfigPath, getSecretsPath } from "./config/paths.js";
 import { getDatabasePath, openDatabase } from "./db/database.js";
 import { getGatewayStatus } from "./gateway/index.js";
+import { createChatModel } from "./llm/openai-compatible.js";
 import { MessageRepository } from "./messages/repository.js";
 import { MessageFtsRetriever } from "./rag/message-retriever.js";
+import { askWithRag } from "./rag/qa-service.js";
 import { startWebServer } from "./web/server.js";
 
 const program = new Command();
@@ -228,6 +230,36 @@ dev
 
     console.log(JSON.stringify(evidence, null, 2));
     database.close();
+  });
+
+dev
+  .command("ask")
+  .description("通过本地检索证据调用 LLM 回答")
+  .argument("<question>", "问题")
+  .action(async (question: string) => {
+    const config = await loadConfig();
+    const secrets = await loadSecrets();
+    const database = openDatabase(config);
+    const retriever = new MessageFtsRetriever(new MessageRepository(database));
+
+    try {
+      const result = await askWithRag({
+        question,
+        retriever,
+        model: createChatModel(config, secrets),
+      });
+
+      console.log(result.answer);
+      if (result.citations.length > 0) {
+        console.log("\n引用：");
+        for (const citation of result.citations) {
+          const source = citation.source;
+          console.log(`- [${citation.marker}] ${source.label}${source.sender ? `，${source.sender}` : ""}${source.timestamp ? `，${source.timestamp}` : ""}`);
+        }
+      }
+    } finally {
+      database.close();
+    }
   });
 
 program.parseAsync().catch((error: unknown) => {
