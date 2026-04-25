@@ -2,6 +2,15 @@ import type { IngestMessageInput } from "../messages/types.js";
 
 type JsonObject = Record<string, unknown>;
 
+export interface FeishuAttachmentMetadata {
+  platform: "feishu";
+  kind: "file" | "image" | "audio" | "media";
+  fileKey: string;
+  fileName?: string;
+  mimeType?: string;
+  size?: number;
+}
+
 export interface FeishuReceiveMessageEvent {
   event?: {
     sender?: {
@@ -59,6 +68,19 @@ function stringifyUnknown(value: unknown): string {
   return "";
 }
 
+function numberUnknown(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
 function extractPostText(content: JsonObject): string {
   const post = asObject(content.post);
   const zhCn = asObject(post.zh_cn ?? post["zh-CN"] ?? post.en_us ?? post["en-US"]);
@@ -85,6 +107,39 @@ function extractPostText(content: JsonObject): string {
   }
 
   return parts.join(" ").trim();
+}
+
+export function extractFeishuAttachment(
+  messageType: string,
+  content: JsonObject,
+): FeishuAttachmentMetadata | undefined {
+  if (messageType === "image") {
+    const fileKey = stringifyUnknown(content.image_key);
+    return fileKey ? { platform: "feishu", kind: "image", fileKey } : undefined;
+  }
+
+  if (messageType === "audio") {
+    const fileKey = stringifyUnknown(content.file_key);
+    return fileKey ? { platform: "feishu", kind: "audio", fileKey } : undefined;
+  }
+
+  if (messageType !== "file" && messageType !== "media") {
+    return undefined;
+  }
+
+  const fileKey = stringifyUnknown(content.file_key);
+  if (!fileKey) {
+    return undefined;
+  }
+
+  return {
+    platform: "feishu",
+    kind: messageType,
+    fileKey,
+    fileName: stringifyUnknown(content.file_name) || undefined,
+    mimeType: stringifyUnknown(content.mime_type) || undefined,
+    size: numberUnknown(content.file_size ?? content.size),
+  };
 }
 
 function extractMessageText(messageType: string, content: JsonObject): string {
@@ -169,7 +224,11 @@ export function normalizeFeishuReceiveMessageEvent(payload: FeishuReceiveMessage
     messageType,
     text,
     sentAt: normalizeTimestamp(message.create_time),
-    rawPayload: payload,
+    rawPayload: {
+      platform: "feishu",
+      raw: payload,
+      content,
+      attachment: extractFeishuAttachment(messageType, content),
+    },
   };
 }
-
