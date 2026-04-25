@@ -282,6 +282,12 @@ WSClient 长连接 -> EventDispatcher im.message.receive_v1 -> GatewayIngestor -
 
 Gateway 层只负责接收和归一化事件，不直接参与 RAG 答案生成，避免平台细节污染知识库和检索层。
 
+当消息命中 `@ChatterCatcher` 时，Gateway 会在入库后触发问答流程，但检索时必须排除本次提问消息，避免把问题本身当作证据。回复链路为：
+
+```text
+@消息 -> 入库 -> 排除当前消息 -> 混合检索 -> askWithRag -> 飞书 message.create 回复群聊
+```
+
 必需事件：
 
 ```text

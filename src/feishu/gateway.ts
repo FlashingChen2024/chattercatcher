@@ -2,6 +2,7 @@ import * as lark from "@larksuiteoapi/node-sdk";
 import type { AppConfig, AppSecrets } from "../config/schema.js";
 import type { GatewayIngestor } from "../gateway/ingest.js";
 import type { FeishuReceiveMessageEvent } from "./normalize.js";
+import type { FeishuQuestionHandler } from "./question.js";
 
 export interface FeishuGatewayRuntime {
   start(): Promise<void>;
@@ -17,6 +18,7 @@ export interface FeishuGatewayOptions {
   config: AppConfig;
   secrets: AppSecrets;
   ingestor: GatewayIngestor;
+  questionHandler?: FeishuQuestionHandler;
   wsClientFactory?: (params: {
     appId: string;
     appSecret: string;
@@ -38,16 +40,25 @@ function assertFeishuConfig(config: AppConfig, secrets: AppSecrets): void {
   }
 }
 
-export function createFeishuEventDispatcher(ingestor: GatewayIngestor): lark.EventDispatcher {
+export function createFeishuEventDispatcher(ingestor: GatewayIngestor, questionHandler?: FeishuQuestionHandler): lark.EventDispatcher {
   return new lark.EventDispatcher({}).register({
     "im.message.receive_v1": async (data: FeishuReceiveMessageEvent["event"]) => {
-      const result = ingestor.ingestFeishuEvent({ event: data });
+      const payload = { event: data };
+      const result = ingestor.ingestFeishuEvent(payload);
       if (!result.accepted) {
         console.log(`飞书消息未入库：${result.reason}`);
         return;
       }
 
       console.log(`飞书消息已入库：${result.messageId}`);
+      if (questionHandler) {
+        const decision = await questionHandler.handle(payload, {
+          excludeMessageIds: result.messageId ? [result.messageId] : [],
+        });
+        if (!decision.shouldAnswer) {
+          console.log(`飞书消息不触发回答：${decision.reason}`);
+        }
+      }
     },
   });
 }
@@ -77,7 +88,7 @@ export function createFeishuGateway(options: FeishuGatewayOptions): FeishuGatewa
       onReconnected: () => console.log("飞书长连接已重连。"),
     });
 
-  const eventDispatcher = createFeishuEventDispatcher(options.ingestor);
+  const eventDispatcher = createFeishuEventDispatcher(options.ingestor, options.questionHandler);
 
   return {
     async start() {
@@ -88,4 +99,3 @@ export function createFeishuGateway(options: FeishuGatewayOptions): FeishuGatewa
     },
   };
 }
-

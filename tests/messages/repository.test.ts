@@ -83,4 +83,29 @@ describe("message repository", () => {
       database.close();
     }
   });
+
+  it("检索时可以排除当前提问消息", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const database = openDatabase(config);
+    try {
+      const messages = new MessageRepository(database);
+      const questionId = messages.ingest({
+        platform: "dev",
+        platformChatId: "family",
+        chatName: "家庭群",
+        platformMessageId: "question",
+        senderId: "me",
+        senderName: "我",
+        messageType: "text",
+        text: "端午活动什么时候？",
+        sentAt: "2026-04-25T08:00:00.000Z",
+      });
+
+      expect(messages.searchMessages("端午活动什么时候")).toHaveLength(1);
+      expect(messages.searchMessages("端午活动什么时候", 8, { excludeMessageIds: [questionId] })).toHaveLength(0);
+    } finally {
+      database.close();
+    }
+  });
 });

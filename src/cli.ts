@@ -7,48 +7,19 @@ import { getChatterCatcherHome, getConfigPath, getSecretsPath } from "./config/p
 import { getDatabasePath, openDatabase } from "./db/database.js";
 import { createFeishuGateway } from "./feishu/gateway.js";
 import type { FeishuReceiveMessageEvent } from "./feishu/normalize.js";
+import { FeishuQuestionHandler } from "./feishu/question.js";
+import { FeishuMessageSender } from "./feishu/sender.js";
 import { GatewayIngestor } from "./gateway/ingest.js";
 import { getGatewayStatus } from "./gateway/index.js";
 import { createChatModel, createEmbeddingModel } from "./llm/openai-compatible.js";
 import { MessageRepository } from "./messages/repository.js";
-import { HybridRetriever } from "./rag/hybrid-retriever.js";
+import { createHybridRetriever, hasEmbeddingConfig } from "./rag/factory.js";
 import { indexMessageChunks } from "./rag/indexer.js";
 import { getLanceDbPath, LanceDbVectorStore } from "./rag/lancedb-store.js";
-import { MessageFtsRetriever } from "./rag/message-retriever.js";
 import { askWithRag } from "./rag/qa-service.js";
-import type { Retriever } from "./rag/retriever.js";
-import { VectorRetriever } from "./rag/vector-retriever.js";
 import { startWebServer } from "./web/server.js";
 
 const program = new Command();
-
-function hasEmbeddingConfig(config: Awaited<ReturnType<typeof loadConfig>>, secrets: Awaited<ReturnType<typeof loadSecrets>>): boolean {
-  return Boolean((config.embedding.baseUrl || config.llm.baseUrl) && config.embedding.model && (secrets.embedding.apiKey || secrets.llm.apiKey));
-}
-
-async function createHybridRetriever(input: {
-  config: Awaited<ReturnType<typeof loadConfig>>;
-  secrets: Awaited<ReturnType<typeof loadSecrets>>;
-  messages: MessageRepository;
-}): Promise<{ retriever: Retriever; close: () => void }> {
-  const retrievers: Retriever[] = [new MessageFtsRetriever(input.messages)];
-  const closers: Array<() => void> = [];
-
-  if (hasEmbeddingConfig(input.config, input.secrets)) {
-    const vectorStore = await LanceDbVectorStore.connectFromConfig(input.config);
-    retrievers.push(new VectorRetriever(createEmbeddingModel(input.config, input.secrets), vectorStore));
-    closers.push(() => vectorStore.close());
-  }
-
-  return {
-    retriever: new HybridRetriever(retrievers),
-    close: () => {
-      for (const closer of closers) {
-        closer();
-      }
-    },
-  };
-}
 
 program
   .name("chattercatcher")
@@ -180,6 +151,13 @@ gateway.command("start").description("启动飞书长连接 Gateway 和本地 We
     config,
     secrets,
     ingestor: new GatewayIngestor(database),
+    questionHandler: new FeishuQuestionHandler({
+      config,
+      secrets,
+      database,
+      sender: FeishuMessageSender.fromConfig(config, secrets),
+      model: createChatModel(config, secrets),
+    }),
   });
 
   process.on("SIGINT", () => {

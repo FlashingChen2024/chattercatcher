@@ -188,8 +188,10 @@ export class MessageRepository {
       .all(limit) as MessageSearchResult[];
   }
 
-  searchMessages(query: string, limit = 8): MessageSearchResult[] {
+  searchMessages(query: string, limit = 8, options: { excludeMessageIds?: string[] } = {}): MessageSearchResult[] {
     const ftsQuery = escapeFtsQuery(query);
+    const excludedIds = options.excludeMessageIds ?? [];
+    const excludedWhere = excludedIds.length > 0 ? `AND fts.message_id NOT IN (${excludedIds.map(() => "?").join(", ")})` : "";
     const ftsResults = this.database
       .prepare(
         `
@@ -206,11 +208,12 @@ export class MessageRepository {
         JOIN messages m ON m.id = fts.message_id
         JOIN chats c ON c.id = m.chat_id
         WHERE message_chunks_fts MATCH ?
+        ${excludedWhere}
         ORDER BY bm25(message_chunks_fts)
         LIMIT ?
       `,
       )
-      .all(ftsQuery, limit) as MessageSearchResult[];
+      .all(ftsQuery, ...excludedIds, limit) as MessageSearchResult[];
 
     if (ftsResults.length > 0) {
       return ftsResults;
@@ -223,6 +226,8 @@ export class MessageRepository {
 
     const where = terms.map(() => "mc.text LIKE ? ESCAPE '\\'").join(" OR ");
     const params = terms.map((term) => `%${escapeLikeTerm(term)}%`);
+    const likeExcludedWhere =
+      excludedIds.length > 0 ? `AND m.id NOT IN (${excludedIds.map(() => "?").join(", ")})` : "";
 
     return this.database
       .prepare(
@@ -238,12 +243,13 @@ export class MessageRepository {
         FROM message_chunks mc
         JOIN messages m ON m.id = mc.message_id
         JOIN chats c ON c.id = m.chat_id
-        WHERE ${where}
+        WHERE (${where})
+        ${likeExcludedWhere}
         ORDER BY m.sent_at DESC
         LIMIT ?
       `,
       )
-      .all(...params, limit) as MessageSearchResult[];
+      .all(...params, ...excludedIds, limit) as MessageSearchResult[];
   }
 
   getChatCount(): number {

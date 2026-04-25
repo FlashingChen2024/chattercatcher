@@ -1,10 +1,12 @@
 import type { SqliteDatabase } from "../db/database.js";
 import { normalizeFeishuReceiveMessageEvent, type FeishuReceiveMessageEvent } from "../feishu/normalize.js";
 import { MessageRepository } from "../messages/repository.js";
+import type { IngestMessageInput } from "../messages/types.js";
 
 export interface GatewayIngestResult {
   accepted: boolean;
   messageId?: string;
+  message?: IngestMessageInput;
   reason?: string;
 }
 
@@ -28,7 +30,7 @@ export class GatewayIngestor {
     return {
       accepted: true,
       messageId,
+      message: normalized,
     };
   }
 }
-
