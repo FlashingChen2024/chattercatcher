@@ -42,6 +42,7 @@ describe("FileJobRepository", () => {
           messageId: "msg_1",
         },
       ]);
+      expect(jobs.get(id)).toMatchObject({ id, status: "indexed" });
     } finally {
       database.close();
     }

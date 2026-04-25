@@ -319,6 +319,37 @@ files
   });
 
 files
+  .command("retry")
+  .description("重试一个失败的文件解析任务")
+  .argument("<jobId>", "文件解析任务 ID")
+  .action(async (jobId: string) => {
+    const config = await loadConfig();
+    const database = openDatabase(config);
+    const jobs = new FileJobRepository(database);
+    const messages = new MessageRepository(database);
+
+    try {
+      const job = jobs.get(jobId);
+      if (!job) {
+        console.log(`没有找到文件解析任务：${jobId}`);
+        return;
+      }
+
+      const result = await ingestLocalFile({
+        config,
+        messages,
+        jobs,
+        filePath: job.sourcePath,
+      });
+      console.log(
+        `重试完成：${result.fileName}，状态=indexed，解析器=${result.parser}，消息ID=${result.messageId}`,
+      );
+    } finally {
+      database.close();
+    }
+  });
+
+files
   .command("list")
   .description("查看已进入 RAG 的本地文件")
   .option("--limit <number>", "最多显示的文件数", "50")

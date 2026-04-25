@@ -127,7 +127,15 @@ export class FileJobRepository {
       });
   }
 
+  get(id: string): FileJobRecord | null {
+    return this.listByWhere("WHERE id = ?", [id], 1)[0] ?? null;
+  }
+
   list(limit = 50): FileJobRecord[] {
+    return this.listByWhere("", [], limit);
+  }
+
+  private listByWhere(whereSql: string, params: unknown[], limit: number): FileJobRecord[] {
     const rows = this.database
       .prepare(
         `
@@ -146,11 +154,12 @@ export class FileJobRepository {
           created_at AS createdAt,
           updated_at AS updatedAt
         FROM file_jobs
+        ${whereSql}
         ORDER BY updated_at DESC
         LIMIT ?
       `,
       )
-      .all(limit) as Array<{
+      .all(...params, limit) as Array<{
       id: string;
       sourcePath: string;
       storedPath: string | null;
