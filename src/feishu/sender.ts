@@ -36,7 +36,7 @@ interface FeishuClientLike {
   };
 }
 
-function mapDomain(domain: AppConfig["feishu"]["domain"]): lark.Domain {
+export function mapDomain(domain: AppConfig["feishu"]["domain"]): lark.Domain {
   return domain === "lark" ? lark.Domain.Lark : lark.Domain.Feishu;
 }
 

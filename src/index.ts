@@ -6,6 +6,7 @@ export * from "./doctor/checks.js";
 export * from "./feishu/gateway.js";
 export * from "./feishu/normalize.js";
 export * from "./feishu/question.js";
+export * from "./feishu/resource-downloader.js";
 export * from "./feishu/sender.js";
 export * from "./files/ingest.js";
 export * from "./gateway/ingest.js";
