@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+.env
+.chattercatcher-test/
+npm-debug.log*
