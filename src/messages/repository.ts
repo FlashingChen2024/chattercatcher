@@ -199,6 +199,34 @@ export class MessageRepository {
       .all(limit) as MessageSearchResult[];
   }
 
+  listMessageChunksByMessageIds(messageIds: string[], limit = 10000): MessageSearchResult[] {
+    if (messageIds.length === 0) {
+      return [];
+    }
+
+    return this.database
+      .prepare(
+        `
+        SELECT
+          mc.id AS chunkId,
+          m.id AS messageId,
+          mc.text AS text,
+          1.0 AS score,
+          m.message_type AS messageType,
+          c.name AS chatName,
+          m.sender_name AS senderName,
+          m.sent_at AS sentAt
+        FROM message_chunks mc
+        JOIN messages m ON m.id = mc.message_id
+        JOIN chats c ON c.id = m.chat_id
+        WHERE m.id IN (${messageIds.map(() => "?").join(", ")})
+        ORDER BY m.sent_at DESC, mc.chunk_index ASC
+        LIMIT ?
+      `,
+      )
+      .all(...messageIds, limit) as MessageSearchResult[];
+  }
+
   searchMessages(query: string, limit = 8, options: { excludeMessageIds?: string[] } = {}): MessageSearchResult[] {
     const ftsQuery = escapeFtsQuery(query);
     const excludedIds = options.excludeMessageIds ?? [];

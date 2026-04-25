@@ -58,5 +58,46 @@ describe("indexMessageChunks", () => {
       database.close();
     }
   });
-});
 
+  it("可以只索引指定消息的 chunks", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const database = openDatabase(config);
+
+    try {
+      const messages = new MessageRepository(database);
+      const firstId = messages.ingest({
+        platform: "dev",
+        platformChatId: "family",
+        chatName: "家庭群",
+        platformMessageId: "message-1",
+        senderId: "mom",
+        senderName: "老妈",
+        messageType: "text",
+        text: "端午活动改到 2026/6/30。",
+        sentAt: "2026-04-25T08:00:00.000Z",
+      });
+      messages.ingest({
+        platform: "dev",
+        platformChatId: "family",
+        chatName: "家庭群",
+        platformMessageId: "message-2",
+        senderId: "dad",
+        senderName: "老爸",
+        messageType: "text",
+        text: "晚饭吃面。",
+        sentAt: "2026-04-25T09:00:00.000Z",
+      });
+
+      const store = new MemoryVectorStore();
+      const stats = await indexMessageChunks({ messages, embedding, store, messageIds: [firstId] });
+      const results = await store.search([1, 0], 10);
+
+      expect(stats).toEqual({ chunks: 1, vectors: 1 });
+      expect(results).toHaveLength(1);
+      expect(results[0]?.text).toContain("2026/6/30");
+    } finally {
+      database.close();
+    }
+  });
+});

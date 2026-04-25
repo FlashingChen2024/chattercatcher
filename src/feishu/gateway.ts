@@ -22,6 +22,7 @@ export interface FeishuGatewayOptions {
   ingestor: GatewayIngestor;
   questionHandler?: FeishuQuestionHandler;
   resourceDownloader?: FeishuResourceDownloader;
+  attachmentVectorIndexer?: (messageId: string) => Promise<{ chunks: number; vectors: number }>;
   wsClientFactory?: (params: {
     appId: string;
     appSecret: string;
@@ -44,6 +45,7 @@ export function createFeishuEventDispatcher(options: {
   ingestor: GatewayIngestor;
   questionHandler?: FeishuQuestionHandler;
   resourceDownloader?: FeishuResourceDownloader;
+  attachmentVectorIndexer?: (messageId: string) => Promise<{ chunks: number; vectors: number }>;
 }): lark.EventDispatcher {
   return new lark.EventDispatcher({}).register({
     "im.message.receive_v1": async (data: FeishuReceiveMessageEvent["event"]) => {
@@ -53,6 +55,7 @@ export function createFeishuEventDispatcher(options: {
             payload,
             downloader: options.resourceDownloader,
             config: options.config,
+            vectorIndexMessage: options.attachmentVectorIndexer,
           })
         : options.ingestor.ingestFeishuEvent(payload);
 
@@ -66,6 +69,11 @@ export function createFeishuEventDispatcher(options: {
         console.log(`飞书附件已下载：${result.attachment.downloaded.storedPath}`);
         if (result.attachment.indexedMessageId) {
           console.log(`飞书附件已进入 RAG：${result.attachment.indexedMessageId}`);
+          if (result.attachment.vectorIndexed) {
+            console.log(
+              `飞书附件向量索引完成：chunks=${result.attachment.vectorIndexed.chunks}, vectors=${result.attachment.vectorIndexed.vectors}`,
+            );
+          }
         } else if (result.attachment.skippedReason) {
           console.log(`飞书附件暂未进入 RAG：${result.attachment.skippedReason}`);
         }
@@ -113,6 +121,7 @@ export function createFeishuGateway(options: FeishuGatewayOptions): FeishuGatewa
     ingestor: options.ingestor,
     questionHandler: options.questionHandler,
     resourceDownloader: options.resourceDownloader,
+    attachmentVectorIndexer: options.attachmentVectorIndexer,
   });
 
   return {

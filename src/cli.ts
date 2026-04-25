@@ -160,11 +160,21 @@ gateway.command("start").description("启动飞书长连接 Gateway 和本地 We
   }
 
   const database = openDatabase(config);
+  const vectorStore = hasEmbeddingConfig(config, secrets) ? await LanceDbVectorStore.connectFromConfig(config) : null;
   const gatewayRuntime = createFeishuGateway({
     config,
     secrets,
     ingestor: new GatewayIngestor(database),
     resourceDownloader: FeishuResourceDownloader.fromConfig(config, secrets),
+    attachmentVectorIndexer: vectorStore
+      ? (messageId) =>
+          indexMessageChunks({
+            messages: new MessageRepository(database),
+            embedding: createEmbeddingModel(config, secrets),
+            store: vectorStore,
+            messageIds: [messageId],
+          })
+      : undefined,
     questionHandler: new FeishuQuestionHandler({
       config,
       secrets,
@@ -176,11 +186,13 @@ gateway.command("start").description("启动飞书长连接 Gateway 和本地 We
 
   process.on("SIGINT", () => {
     gatewayRuntime.stop();
+    vectorStore?.close();
     database.close();
     process.exit(0);
   });
   process.on("SIGTERM", () => {
     gatewayRuntime.stop();
+    vectorStore?.close();
     database.close();
     process.exit(0);
   });

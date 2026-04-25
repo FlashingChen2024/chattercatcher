@@ -13,8 +13,11 @@ export async function indexMessageChunks(input: {
   embedding: EmbeddingModel;
   store: VectorStore;
   limit?: number;
+  messageIds?: string[];
 }): Promise<VectorIndexStats> {
-  const chunks = input.messages.listAllMessageChunks(input.limit ?? 10000);
+  const chunks = input.messageIds
+    ? input.messages.listMessageChunksByMessageIds(input.messageIds, input.limit ?? 10000)
+    : input.messages.listAllMessageChunks(input.limit ?? 10000);
   if (chunks.length === 0) {
     return { chunks: 0, vectors: 0 };
   }
