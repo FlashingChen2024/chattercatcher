@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildEvidencePrompt, generateGroundedAnswer } from "../../src/rag/answer.js";
+import { buildEvidencePrompt, generateGroundedAnswer, rankEvidenceForPrompt } from "../../src/rag/answer.js";
 import type { ChatModel, EvidenceBlock } from "../../src/rag/types.js";
 
 const evidence: EvidenceBlock[] = [
@@ -31,9 +31,48 @@ describe("RAG answer boundary", () => {
         source: evidence[0]?.source,
       },
     ]);
+    expect(prompt.messages[0]?.content).toContain("证据互相矛盾");
     expect(prompt.messages[1]?.content).toContain("检索证据");
     expect(prompt.messages[1]?.content).toContain("[S1]");
     expect(prompt.messages[1]?.content).toContain("端午活动改到 2026/6/30");
+  });
+
+  it("冲突证据分数接近时优先较新的明确来源", () => {
+    const ranked = rankEvidenceForPrompt([
+      {
+        id: "old",
+        text: "端午活动是 2026/5/30。",
+        score: 0.9,
+        source: { type: "message", label: "家庭群", timestamp: "2026-04-24T08:00:00.000Z" },
+      },
+      {
+        id: "new",
+        text: "端午活动改到 2026/6/30，以这个为准。",
+        score: 0.82,
+        source: { type: "message", label: "家庭群", timestamp: "2026-04-25T08:00:00.000Z" },
+      },
+    ]);
+
+    expect(ranked.map((item) => item.id)).toEqual(["new", "old"]);
+  });
+
+  it("分数差距明显时仍保留相关性优先", () => {
+    const ranked = rankEvidenceForPrompt([
+      {
+        id: "old-relevant",
+        text: "端午活动改到 2026/6/30。",
+        score: 0.95,
+        source: { type: "message", label: "家庭群", timestamp: "2026-04-24T08:00:00.000Z" },
+      },
+      {
+        id: "new-weak",
+        text: "大家晚点再看。",
+        score: 0.5,
+        source: { type: "message", label: "家庭群", timestamp: "2026-04-25T08:00:00.000Z" },
+      },
+    ]);
+
+    expect(ranked.map((item) => item.id)).toEqual(["old-relevant", "new-weak"]);
   });
 
   it("答案生成器返回模型答案和证据引用", async () => {

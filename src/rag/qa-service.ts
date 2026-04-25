@@ -1,6 +1,6 @@
 import { generateGroundedAnswer } from "./answer.js";
-import type { ChatModel, GroundedAnswer } from "./types.js";
 import type { Retriever } from "./retriever.js";
+import type { ChatModel, GroundedAnswer } from "./types.js";
 
 export interface AskWithRagInput {
   question: string;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { askWithRag } from "../../src/rag/qa-service.js";
-import type { ChatModel, EvidenceBlock } from "../../src/rag/types.js";
 import type { Retriever } from "../../src/rag/retriever.js";
+import type { ChatModel, EvidenceBlock } from "../../src/rag/types.js";
 
 describe("askWithRag", () => {
   it("没有证据时不调用模型并明确说不知道", async () => {
@@ -66,4 +66,3 @@ describe("askWithRag", () => {
     expect(result.citations).toHaveLength(1);
   });
 });
-
