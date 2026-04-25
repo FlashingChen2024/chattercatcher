@@ -2,7 +2,9 @@
 import { input, password, select, confirm, number } from "@inquirer/prompts";
 import { Command } from "commander";
 import fs from "node:fs/promises";
+import type { AppConfig, AppSecrets } from "./config/schema.js";
 import { loadConfig, loadSecrets, resetConfigFiles, saveConfig, saveSecrets, ensureConfigFiles, maskSecret } from "./config/store.js";
+import { applySecretInput, resolveEmbeddingApiKey } from "./config/update.js";
 import { getChatterCatcherHome, getConfigPath, getSecretsPath } from "./config/paths.js";
 import { getDatabasePath, openDatabase } from "./db/database.js";
 import { formatDoctorChecks, runDoctor } from "./doctor/checks.js";
@@ -22,14 +24,7 @@ import { startWebServer } from "./web/server.js";
 
 const program = new Command();
 
-program
-  .name("chattercatcher")
-  .description("本地优先的飞书/Lark 家庭群知识机器人")
-  .version("0.1.0");
-
-program.command("setup").description("交互式初始化配置").action(async () => {
-  const { config, secrets } = await ensureConfigFiles();
-
+async function promptForConfiguration(config: AppConfig, secrets: AppSecrets): Promise<void> {
   config.feishu.domain = await select({
     message: "选择飞书区域",
     choices: [
@@ -39,17 +34,29 @@ program.command("setup").description("交互式初始化配置").action(async ()
     default: config.feishu.domain,
   });
   config.feishu.appId = await input({ message: "飞书 App ID", default: config.feishu.appId });
-  secrets.feishu.appSecret = await password({ message: "飞书 App Secret", mask: "*" });
+  secrets.feishu.appSecret = applySecretInput(
+    secrets.feishu.appSecret,
+    await password({ message: secrets.feishu.appSecret ? "飞书 App Secret（留空保留）" : "飞书 App Secret", mask: "*" }),
+  );
+
   config.llm.baseUrl = await input({ message: "LLM Base URL（OpenAI-compatible）", default: config.llm.baseUrl });
-  secrets.llm.apiKey = await password({ message: "LLM API Key", mask: "*" });
+  secrets.llm.apiKey = applySecretInput(
+    secrets.llm.apiKey,
+    await password({ message: secrets.llm.apiKey ? "LLM API Key（留空保留）" : "LLM API Key", mask: "*" }),
+  );
   config.llm.model = await input({ message: "Chat Model", default: config.llm.model });
+
   config.embedding.baseUrl = await input({
     message: "Embedding Base URL（留空则使用 LLM Base URL）",
     default: config.embedding.baseUrl || config.llm.baseUrl,
   });
-  secrets.embedding.apiKey = await password({
-    message: "Embedding API Key（留空则使用 LLM API Key）",
-    mask: "*",
+  secrets.embedding.apiKey = resolveEmbeddingApiKey({
+    currentEmbeddingKey: secrets.embedding.apiKey,
+    nextEmbeddingKey: await password({
+      message: secrets.embedding.apiKey ? "Embedding API Key（留空保留）" : "Embedding API Key（留空则使用 LLM API Key）",
+      mask: "*",
+    }),
+    llmApiKey: secrets.llm.apiKey,
   });
   config.embedding.model = await input({ message: "Embedding Model", default: config.embedding.model });
   const dimension = await number({
@@ -58,29 +65,16 @@ program.command("setup").description("交互式初始化配置").action(async ()
     required: false,
   });
   config.embedding.dimension = dimension ?? null;
+
   config.web.port =
     (await number({ message: "Web UI 端口", default: config.web.port, required: true })) ?? config.web.port;
   config.feishu.requireMention = await confirm({
     message: "群聊回答是否要求 @ChatterCatcher？",
     default: config.feishu.requireMention,
   });
+}
 
-  if (!secrets.embedding.apiKey) {
-    secrets.embedding.apiKey = secrets.llm.apiKey;
-  }
-
-  await saveConfig(config);
-  await saveSecrets(secrets);
-  console.log(`配置已保存：${getConfigPath()}`);
-  console.log(`密钥已保存：${getSecretsPath()}`);
-});
-
-const settings = program.command("settings").description("查看或修改配置");
-
-settings.action(async () => {
-  const config = await loadConfig();
-  const secrets = await loadSecrets();
-
+function printSettings(config: AppConfig, secrets: AppSecrets): void {
   console.log(JSON.stringify(
     {
       home: getChatterCatcherHome(),
@@ -94,6 +88,35 @@ settings.action(async () => {
     null,
     2,
   ));
+}
+
+program
+  .name("chattercatcher")
+  .description("本地优先的飞书/Lark 家庭群知识机器人")
+  .version("0.1.0");
+
+program.command("setup").description("交互式初始化配置").action(async () => {
+  const { config, secrets } = await ensureConfigFiles();
+  await promptForConfiguration(config, secrets);
+  await saveConfig(config);
+  await saveSecrets(secrets);
+  console.log(`配置已保存：${getConfigPath()}`);
+  console.log(`密钥已保存：${getSecretsPath()}`);
+});
+
+const settings = program.command("settings").description("查看或修改配置");
+
+settings.action(async () => {
+  const { config, secrets } = await ensureConfigFiles();
+  await promptForConfiguration(config, secrets);
+  await saveConfig(config);
+  await saveSecrets(secrets);
+  console.log(`配置已更新：${getConfigPath()}`);
+  console.log(`密钥已更新：${getSecretsPath()}`);
+});
+
+settings.command("show").description("查看当前配置（密钥脱敏）").action(async () => {
+  printSettings(await loadConfig(), await loadSecrets());
 });
 
 settings.command("reset").description("重置本地配置和密钥").action(async () => {
