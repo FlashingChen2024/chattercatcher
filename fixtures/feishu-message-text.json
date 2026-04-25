@@ -1,0 +1,16 @@
+{
+  "event": {
+    "sender": {
+      "sender_id": {
+        "open_id": "ou_mom"
+      }
+    },
+    "message": {
+      "message_id": "om_fixture_1",
+      "chat_id": "oc_family",
+      "create_time": "1777111200000",
+      "message_type": "text",
+      "content": "{\"text\":\"端午活动改到 2026/6/30，以这个为准。\"}"
+    }
+  }
+}

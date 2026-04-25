@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 import { input, password, select, confirm, number } from "@inquirer/prompts";
 import { Command } from "commander";
+import fs from "node:fs/promises";
 import { loadConfig, loadSecrets, resetConfigFiles, saveConfig, saveSecrets, ensureConfigFiles, maskSecret } from "./config/store.js";
 import { getChatterCatcherHome, getConfigPath, getSecretsPath } from "./config/paths.js";
 import { getDatabasePath, openDatabase } from "./db/database.js";
+import type { FeishuReceiveMessageEvent } from "./feishu/normalize.js";
+import { GatewayIngestor } from "./gateway/ingest.js";
 import { getGatewayStatus } from "./gateway/index.js";
 import { createChatModel } from "./llm/openai-compatible.js";
 import { MessageRepository } from "./messages/repository.js";
@@ -210,6 +213,30 @@ dev
 
     console.log(`已写入消息：${id}`);
     database.close();
+  });
+
+dev
+  .command("ingest-feishu-event")
+  .description("从 JSON 文件模拟写入一条飞书消息事件")
+  .requiredOption("--file <path>", "飞书事件 JSON 文件")
+  .action(async (options: { file: string }) => {
+    const config = await loadConfig();
+    const database = openDatabase(config);
+
+    try {
+      const raw = await fs.readFile(options.file, "utf8");
+      const payload = JSON.parse(raw) as FeishuReceiveMessageEvent;
+      const result = new GatewayIngestor(database).ingestFeishuEvent(payload);
+
+      if (!result.accepted) {
+        console.log(result.reason);
+        return;
+      }
+
+      console.log(`已写入飞书消息：${result.messageId}`);
+    } finally {
+      database.close();
+    }
   });
 
 dev
