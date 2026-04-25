@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import { loadConfig, loadSecrets, resetConfigFiles, saveConfig, saveSecrets, ensureConfigFiles, maskSecret } from "./config/store.js";
 import { getChatterCatcherHome, getConfigPath, getSecretsPath } from "./config/paths.js";
 import { getDatabasePath, openDatabase } from "./db/database.js";
+import { createFeishuGateway } from "./feishu/gateway.js";
 import type { FeishuReceiveMessageEvent } from "./feishu/normalize.js";
 import { GatewayIngestor } from "./gateway/ingest.js";
 import { getGatewayStatus } from "./gateway/index.js";
@@ -159,12 +160,41 @@ const gateway = program.command("gateway").description("管理本地飞书 Gatew
 
 gateway.command("status").description("查看 Gateway 状态").action(async () => {
   const config = await loadConfig();
-  console.log(JSON.stringify(getGatewayStatus(config), null, 2));
+  const secrets = await loadSecrets();
+  console.log(JSON.stringify(getGatewayStatus(config, secrets), null, 2));
 });
 
-gateway.command("start").description("启动 Gateway（当前开发骨架会启动本地 Web UI）").action(async () => {
+gateway.command("start").description("启动飞书长连接 Gateway 和本地 Web UI").action(async () => {
   const config = await loadConfig();
-  console.log(getGatewayStatus(config).message);
+  const secrets = await loadSecrets();
+  const status = getGatewayStatus(config, secrets);
+  if (!status.configured) {
+    console.log(status.message);
+    console.log("本地 Web UI 仍会启动，方便继续配置。");
+    await startWebServer(config);
+    return;
+  }
+
+  const database = openDatabase(config);
+  const gatewayRuntime = createFeishuGateway({
+    config,
+    secrets,
+    ingestor: new GatewayIngestor(database),
+  });
+
+  process.on("SIGINT", () => {
+    gatewayRuntime.stop();
+    database.close();
+    process.exit(0);
+  });
+  process.on("SIGTERM", () => {
+    gatewayRuntime.stop();
+    database.close();
+    process.exit(0);
+  });
+
+  console.log(status.message);
+  await gatewayRuntime.start();
   await startWebServer(config);
 });
 

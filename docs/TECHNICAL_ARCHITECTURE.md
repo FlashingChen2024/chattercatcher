@@ -274,6 +274,14 @@ MVP 采用本地 Gateway 模式：
 - 传入消息事件被归一化为内部 message。
 - 回复通过飞书/Lark Bot API 发送。
 
+实现上使用 `@larksuiteoapi/node-sdk` 的 `WSClient` 和 `EventDispatcher`：
+
+```text
+WSClient 长连接 -> EventDispatcher im.message.receive_v1 -> GatewayIngestor -> SQLite/LanceDB RAG
+```
+
+Gateway 层只负责接收和归一化事件，不直接参与 RAG 答案生成，避免平台细节污染知识库和检索层。
+
 必需事件：
 
 ```text

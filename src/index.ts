@@ -1,6 +1,7 @@
 export * from "./config/schema.js";
 export * from "./config/store.js";
 export * from "./db/database.js";
+export * from "./feishu/gateway.js";
 export * from "./feishu/normalize.js";
 export * from "./gateway/ingest.js";
 export * from "./llm/openai-compatible.js";
