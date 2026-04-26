@@ -61,4 +61,39 @@ describe("FeishuMessageSender", () => {
       },
     ]);
   });
+
+  it("可以给指定消息添加表情回复", async () => {
+    const calls: unknown[] = [];
+    const sender = new FeishuMessageSender({
+      im: {
+        v1: {
+          message: {
+            async create() {
+              throw new Error("should not call create");
+            },
+          },
+          messageReaction: {
+            async create(payload) {
+              calls.push(payload);
+            },
+          },
+        },
+      },
+    });
+
+    await sender.addReactionToMessage("om_question", "keyboard");
+
+    expect(calls).toEqual([
+      {
+        path: {
+          message_id: "om_question",
+        },
+        data: {
+          reaction_type: {
+            emoji_type: "keyboard",
+          },
+        },
+      },
+    ]);
+  });
 });

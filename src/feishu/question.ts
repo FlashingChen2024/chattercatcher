@@ -14,6 +14,7 @@ export interface FeishuQuestionHandlerOptions {
   database: SqliteDatabase;
   model: ChatModel;
   sender: MessageSender;
+  thinkingEmojiType?: string;
 }
 
 export interface FeishuQuestionDecision {
@@ -93,6 +94,18 @@ export function getFeishuQuestionDecision(
 export class FeishuQuestionHandler {
   constructor(private readonly options: FeishuQuestionHandlerOptions) {}
 
+  private async acknowledgeQuestion(messageId: string | undefined): Promise<void> {
+    if (!messageId || !this.options.sender.addReactionToMessage) {
+      return;
+    }
+
+    try {
+      await this.options.sender.addReactionToMessage(messageId, this.options.thinkingEmojiType ?? "keyboard");
+    } catch (error) {
+      console.log(`飞书提问即时反馈失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   async handle(
     payload: FeishuReceiveMessageEvent,
     options: { excludeMessageIds?: string[] } = {},
@@ -101,6 +114,9 @@ export class FeishuQuestionHandler {
     if (!decision.shouldAnswer || !decision.question || !decision.chatId) {
       return decision;
     }
+
+    const questionMessageId = payload.event?.message?.message_id;
+    await this.acknowledgeQuestion(questionMessageId);
 
     const { retriever, close } = await createHybridRetriever({
       config: this.options.config,
@@ -118,7 +134,6 @@ export class FeishuQuestionHandler {
         });
         const citations = formatCitations(result.citations);
         const text = citations ? `${result.answer}\n\n引用：\n${citations}` : result.answer;
-        const questionMessageId = payload.event?.message?.message_id;
         if (questionMessageId && this.options.sender.replyTextToMessage) {
           try {
             await this.options.sender.replyTextToMessage(questionMessageId, text);

@@ -72,12 +72,16 @@ describe("FeishuQuestionHandler", () => {
     const database = openDatabase(config);
     const sent: Array<{ chatId: string; text: string }> = [];
     const replies: Array<{ messageId: string; text: string }> = [];
+    const reactions: Array<{ messageId: string; emojiType: string }> = [];
     const sender: MessageSender = {
       async sendTextToChat(chatId, text) {
         sent.push({ chatId, text });
       },
       async replyTextToMessage(messageId, text) {
         replies.push({ messageId, text });
+      },
+      async addReactionToMessage(messageId, emojiType) {
+        reactions.push({ messageId, emojiType });
       },
     };
     const model: ChatModel = {
@@ -107,6 +111,7 @@ describe("FeishuQuestionHandler", () => {
         database,
         model,
         sender,
+        thinkingEmojiType: "keyboard",
       }).handle({
         event: {
           message: {
@@ -120,6 +125,7 @@ describe("FeishuQuestionHandler", () => {
       });
 
       expect(decision.shouldAnswer).toBe(true);
+      expect(reactions).toEqual([{ messageId: "om_question", emojiType: "keyboard" }]);
       expect(sent).toHaveLength(0);
       expect(replies).toHaveLength(1);
       expect(replies[0]).toMatchObject({
@@ -182,6 +188,62 @@ describe("FeishuQuestionHandler", () => {
       });
 
       expect(sent[0]?.text).toContain("暂时无法回答：模型未配置");
+    } finally {
+      database.close();
+    }
+  });
+
+  it("即时反馈失败不影响后续回答", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const secrets = createDefaultSecrets();
+    const database = openDatabase(config);
+    const sent: Array<{ chatId: string; text: string }> = [];
+
+    try {
+      new MessageRepository(database).ingest({
+        platform: "feishu",
+        platformChatId: "oc_family",
+        chatName: "家庭群",
+        platformMessageId: "om_fact",
+        senderId: "ou_mom",
+        senderName: "老妈",
+        messageType: "text",
+        text: "端午活动改到 2026/6/30。",
+        sentAt: "2026-04-25T08:00:00.000Z",
+      });
+
+      const decision = await new FeishuQuestionHandler({
+        config,
+        secrets,
+        database,
+        model: {
+          async complete() {
+            return "端午活动目前是 2026/6/30。[S1]";
+          },
+        },
+        sender: {
+          async addReactionToMessage() {
+            throw new Error("reaction disabled");
+          },
+          async sendTextToChat(chatId, text) {
+            sent.push({ chatId, text });
+          },
+        },
+      }).handle({
+        event: {
+          message: {
+            message_id: "om_question",
+            chat_id: "oc_family",
+            message_type: "text",
+            content: JSON.stringify({ text: "@ChatterCatcher 端午活动什么时候？" }),
+            mentions: [{ name: "ChatterCatcher", key: "@_user_1" }],
+          },
+        },
+      });
+
+      expect(decision.shouldAnswer).toBe(true);
+      expect(sent[0]?.text).toContain("端午活动目前是 2026/6/30");
     } finally {
       database.close();
     }

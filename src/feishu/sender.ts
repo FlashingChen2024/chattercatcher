@@ -4,6 +4,7 @@ import type { AppConfig, AppSecrets } from "../config/schema.js";
 export interface MessageSender {
   sendTextToChat(chatId: string, text: string): Promise<void>;
   replyTextToMessage?(messageId: string, text: string): Promise<void>;
+  addReactionToMessage?(messageId: string, emojiType: string): Promise<void>;
 }
 
 interface FeishuClientLike {
@@ -18,6 +19,18 @@ interface FeishuClientLike {
           };
           params: {
             receive_id_type: "chat_id";
+          };
+        }): Promise<unknown>;
+      };
+      messageReaction?: {
+        create(payload: {
+          path: {
+            message_id: string;
+          };
+          data: {
+            reaction_type: {
+              emoji_type: string;
+            };
           };
         }): Promise<unknown>;
       };
@@ -107,5 +120,22 @@ export class FeishuMessageSender implements MessageSender {
     }
 
     throw new Error("当前飞书 SDK 不支持消息回复接口。");
+  }
+
+  async addReactionToMessage(messageId: string, emojiType: string): Promise<void> {
+    if (!this.client.im.v1?.messageReaction?.create) {
+      throw new Error("当前飞书 SDK 不支持消息表情回复接口。");
+    }
+
+    await this.client.im.v1.messageReaction.create({
+      path: {
+        message_id: messageId,
+      },
+      data: {
+        reaction_type: {
+          emoji_type: emojiType,
+        },
+      },
+    });
   }
 }
