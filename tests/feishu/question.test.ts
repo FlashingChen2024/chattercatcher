@@ -187,7 +187,8 @@ describe("FeishuQuestionHandler", () => {
         },
       });
 
-      expect(sent[0]?.text).toContain("暂时无法回答：模型未配置");
+      expect(sent[0]?.text).toBe("收到，正在查。");
+      expect(sent[1]?.text).toContain("暂时无法回答：模型未配置");
     } finally {
       database.close();
     }
@@ -199,6 +200,7 @@ describe("FeishuQuestionHandler", () => {
     const secrets = createDefaultSecrets();
     const database = openDatabase(config);
     const sent: Array<{ chatId: string; text: string }> = [];
+    const replies: Array<{ messageId: string; text: string }> = [];
 
     try {
       new MessageRepository(database).ingest({
@@ -226,6 +228,9 @@ describe("FeishuQuestionHandler", () => {
           async addReactionToMessage() {
             throw new Error("reaction disabled");
           },
+          async replyTextToMessage(messageId, text) {
+            replies.push({ messageId, text });
+          },
           async sendTextToChat(chatId, text) {
             sent.push({ chatId, text });
           },
@@ -243,7 +248,9 @@ describe("FeishuQuestionHandler", () => {
       });
 
       expect(decision.shouldAnswer).toBe(true);
-      expect(sent[0]?.text).toContain("端午活动目前是 2026/6/30");
+      expect(replies[0]).toEqual({ messageId: "om_question", text: "收到，正在查。" });
+      expect(replies[1]?.text).toContain("端午活动目前是 2026/6/30");
+      expect(sent).toHaveLength(0);
     } finally {
       database.close();
     }

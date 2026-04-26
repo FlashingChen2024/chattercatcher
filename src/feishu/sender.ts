@@ -21,6 +21,15 @@ interface FeishuClientLike {
             receive_id_type: "chat_id";
           };
         }): Promise<unknown>;
+        reply?: (payload: {
+          path: {
+            message_id: string;
+          };
+          data: {
+            msg_type: string;
+            content: string;
+          };
+        }) => Promise<unknown>;
       };
       messageReaction?: {
         create(payload: {
@@ -113,6 +122,11 @@ export class FeishuMessageSender implements MessageSender {
         content: JSON.stringify({ text }),
       },
     };
+
+    if (this.client.im.v1?.message.reply) {
+      await this.client.im.v1.message.reply(payload);
+      return;
+    }
 
     if (this.client.im.message?.reply) {
       await this.client.im.message.reply(payload);

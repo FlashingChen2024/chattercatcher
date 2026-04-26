@@ -62,6 +62,38 @@ describe("FeishuMessageSender", () => {
     ]);
   });
 
+  it("支持通过飞书 im.v1.message.reply 回复指定消息", async () => {
+    const calls: unknown[] = [];
+    const sender = new FeishuMessageSender({
+      im: {
+        v1: {
+          message: {
+            async create() {
+              throw new Error("should not call create");
+            },
+            async reply(payload) {
+              calls.push(payload);
+            },
+          },
+        },
+      },
+    });
+
+    await sender.replyTextToMessage("om_question", "回答");
+
+    expect(calls).toEqual([
+      {
+        path: {
+          message_id: "om_question",
+        },
+        data: {
+          msg_type: "text",
+          content: JSON.stringify({ text: "回答" }),
+        },
+      },
+    ]);
+  });
+
   it("可以给指定消息添加表情回复", async () => {
     const calls: unknown[] = [];
     const sender = new FeishuMessageSender({

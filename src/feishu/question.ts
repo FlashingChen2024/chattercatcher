@@ -94,16 +94,34 @@ export function getFeishuQuestionDecision(
 export class FeishuQuestionHandler {
   constructor(private readonly options: FeishuQuestionHandlerOptions) {}
 
-  private async acknowledgeQuestion(messageId: string | undefined): Promise<void> {
-    if (!messageId || !this.options.sender.addReactionToMessage) {
+  private async sendResponse(chatId: string, messageId: string | undefined, text: string): Promise<void> {
+    if (messageId && this.options.sender.replyTextToMessage) {
+      try {
+        await this.options.sender.replyTextToMessage(messageId, text);
+        return;
+      } catch (error) {
+        console.log(`飞书回复原消息失败，退回群消息：${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    await this.options.sender.sendTextToChat(chatId, text);
+  }
+
+  private async acknowledgeQuestion(chatId: string, messageId: string | undefined): Promise<void> {
+    if (!messageId) {
       return;
     }
 
-    try {
-      await this.options.sender.addReactionToMessage(messageId, this.options.thinkingEmojiType ?? "keyboard");
-    } catch (error) {
-      console.log(`飞书提问即时反馈失败：${error instanceof Error ? error.message : String(error)}`);
+    if (this.options.sender.addReactionToMessage) {
+      try {
+        await this.options.sender.addReactionToMessage(messageId, this.options.thinkingEmojiType ?? "keyboard");
+        return;
+      } catch (error) {
+        console.log(`飞书提问表情反馈失败，改用文字反馈：${error instanceof Error ? error.message : String(error)}`);
+      }
     }
+
+    await this.sendResponse(chatId, messageId, "收到，正在查。");
   }
 
   async handle(
@@ -116,7 +134,7 @@ export class FeishuQuestionHandler {
     }
 
     const questionMessageId = payload.event?.message?.message_id;
-    await this.acknowledgeQuestion(questionMessageId);
+    await this.acknowledgeQuestion(decision.chatId, questionMessageId);
 
     const { retriever, close } = await createHybridRetriever({
       config: this.options.config,
@@ -134,18 +152,10 @@ export class FeishuQuestionHandler {
         });
         const citations = formatCitations(result.citations);
         const text = citations ? `${result.answer}\n\n引用：\n${citations}` : result.answer;
-        if (questionMessageId && this.options.sender.replyTextToMessage) {
-          try {
-            await this.options.sender.replyTextToMessage(questionMessageId, text);
-          } catch {
-            await this.options.sender.sendTextToChat(decision.chatId, text);
-          }
-        } else {
-          await this.options.sender.sendTextToChat(decision.chatId, text);
-        }
+        await this.sendResponse(decision.chatId, questionMessageId, text);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        await this.options.sender.sendTextToChat(decision.chatId, `暂时无法回答：${message}`);
+        await this.sendResponse(decision.chatId, questionMessageId, `暂时无法回答：${message}`);
       }
       return decision;
     } finally {
