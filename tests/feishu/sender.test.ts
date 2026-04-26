@@ -31,5 +31,34 @@ describe("FeishuMessageSender", () => {
       },
     ]);
   });
-});
 
+  it("优先支持回复指定飞书消息", async () => {
+    const calls: unknown[] = [];
+    const sender = new FeishuMessageSender({
+      im: {
+        message: {
+          async create() {
+            throw new Error("should not call create");
+          },
+          async reply(payload) {
+            calls.push(payload);
+          },
+        },
+      },
+    });
+
+    await sender.replyTextToMessage("om_question", "回答");
+
+    expect(calls).toEqual([
+      {
+        path: {
+          message_id: "om_question",
+        },
+        data: {
+          msg_type: "text",
+          content: JSON.stringify({ text: "回答" }),
+        },
+      },
+    ]);
+  });
+});

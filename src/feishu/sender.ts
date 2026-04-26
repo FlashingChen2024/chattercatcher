@@ -3,6 +3,7 @@ import type { AppConfig, AppSecrets } from "../config/schema.js";
 
 export interface MessageSender {
   sendTextToChat(chatId: string, text: string): Promise<void>;
+  replyTextToMessage?(messageId: string, text: string): Promise<void>;
 }
 
 interface FeishuClientLike {
@@ -32,6 +33,15 @@ interface FeishuClientLike {
           receive_id_type: "chat_id";
         };
       }): Promise<unknown>;
+      reply?: (payload: {
+        path: {
+          message_id: string;
+        };
+        data: {
+          msg_type: string;
+          content: string;
+        };
+      }) => Promise<unknown>;
     };
   };
 }
@@ -78,5 +88,24 @@ export class FeishuMessageSender implements MessageSender {
     {
       throw new Error("当前飞书 SDK 不支持消息发送接口。");
     }
+  }
+
+  async replyTextToMessage(messageId: string, text: string): Promise<void> {
+    const payload = {
+      path: {
+        message_id: messageId,
+      },
+      data: {
+        msg_type: "text",
+        content: JSON.stringify({ text }),
+      },
+    };
+
+    if (this.client.im.message?.reply) {
+      await this.client.im.message.reply(payload);
+      return;
+    }
+
+    throw new Error("当前飞书 SDK 不支持消息回复接口。");
   }
 }

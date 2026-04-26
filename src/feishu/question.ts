@@ -1,6 +1,7 @@
 import type { AppConfig, AppSecrets } from "../config/schema.js";
 import type { SqliteDatabase } from "../db/database.js";
 import { MessageRepository } from "../messages/repository.js";
+import { formatCitations } from "../rag/citations.js";
 import { createHybridRetriever } from "../rag/factory.js";
 import { askWithRag } from "../rag/qa-service.js";
 import type { ChatModel } from "../rag/types.js";
@@ -115,11 +116,18 @@ export class FeishuQuestionHandler {
           retriever,
           model: this.options.model,
         });
-        const citations = result.citations
-          .map((citation) => `[${citation.marker}] ${citation.source.label}${citation.source.sender ? ` ${citation.source.sender}` : ""}${citation.source.timestamp ? ` ${citation.source.timestamp}` : ""}`)
-          .join("\n");
+        const citations = formatCitations(result.citations);
         const text = citations ? `${result.answer}\n\n引用：\n${citations}` : result.answer;
-        await this.options.sender.sendTextToChat(decision.chatId, text);
+        const questionMessageId = payload.event?.message?.message_id;
+        if (questionMessageId && this.options.sender.replyTextToMessage) {
+          try {
+            await this.options.sender.replyTextToMessage(questionMessageId, text);
+          } catch {
+            await this.options.sender.sendTextToChat(decision.chatId, text);
+          }
+        } else {
+          await this.options.sender.sendTextToChat(decision.chatId, text);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         await this.options.sender.sendTextToChat(decision.chatId, `暂时无法回答：${message}`);

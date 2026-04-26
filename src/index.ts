@@ -22,6 +22,7 @@ export * from "./messages/chunker.js";
 export * from "./messages/repository.js";
 export * from "./messages/types.js";
 export * from "./rag/answer.js";
+export * from "./rag/citations.js";
 export * from "./rag/embedding.js";
 export * from "./rag/hybrid-retriever.js";
 export * from "./rag/indexer.js";

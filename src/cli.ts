@@ -29,6 +29,7 @@ import { indexMessageChunks } from "./rag/indexer.js";
 import { getLanceDbPath, LanceDbVectorStore } from "./rag/lancedb-store.js";
 import { processMessagesNow } from "./rag/manual-index.js";
 import { askWithRag } from "./rag/qa-service.js";
+import { formatCitation } from "./rag/citations.js";
 import { startWebServer } from "./web/server.js";
 
 const program = new Command();
@@ -674,8 +675,7 @@ dev
       if (result.citations.length > 0) {
         console.log("\n引用：");
         for (const citation of result.citations) {
-          const source = citation.source;
-          console.log(`- [${citation.marker}] ${source.label}${source.sender ? `，${source.sender}` : ""}${source.timestamp ? `，${source.timestamp}` : ""}`);
+          console.log(`- ${formatCitation(citation)}`);
         }
       }
     } finally {

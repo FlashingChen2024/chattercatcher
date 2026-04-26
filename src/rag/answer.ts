@@ -56,6 +56,7 @@ export function buildEvidencePrompt(
     marker: `S${index + 1}`,
     evidenceId: item.id,
     source: item.source,
+    text: item.text,
   }));
 
   const evidenceText = selected

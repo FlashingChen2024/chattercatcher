@@ -19,6 +19,7 @@ export interface Citation {
   marker: string;
   evidenceId: string;
   source: EvidenceSource;
+  text: string;
 }
 
 export interface GroundedAnswer {

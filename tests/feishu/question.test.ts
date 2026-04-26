@@ -71,9 +71,13 @@ describe("FeishuQuestionHandler", () => {
     const secrets = createDefaultSecrets();
     const database = openDatabase(config);
     const sent: Array<{ chatId: string; text: string }> = [];
+    const replies: Array<{ messageId: string; text: string }> = [];
     const sender: MessageSender = {
       async sendTextToChat(chatId, text) {
         sent.push({ chatId, text });
+      },
+      async replyTextToMessage(messageId, text) {
+        replies.push({ messageId, text });
       },
     };
     const model: ChatModel = {
@@ -116,12 +120,15 @@ describe("FeishuQuestionHandler", () => {
       });
 
       expect(decision.shouldAnswer).toBe(true);
-      expect(sent).toHaveLength(1);
-      expect(sent[0]).toMatchObject({
-        chatId: "oc_family",
+      expect(sent).toHaveLength(0);
+      expect(replies).toHaveLength(1);
+      expect(replies[0]).toMatchObject({
+        messageId: "om_question",
       });
-      expect(sent[0]?.text).toContain("端午活动目前是 2026/6/30");
-      expect(sent[0]?.text).toContain("引用");
+      expect(replies[0]?.text).toContain("端午活动目前是 2026/6/30");
+      expect(replies[0]?.text).toContain("引用");
+      expect(replies[0]?.text).toContain("老妈在 2026-04-25 16:00 说");
+      expect(replies[0]?.text).toContain("端午活动改到 2026/6/30，以这个为准。");
     } finally {
       database.close();
     }

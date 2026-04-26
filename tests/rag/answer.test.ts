@@ -29,6 +29,7 @@ describe("RAG answer boundary", () => {
         marker: "S1",
         evidenceId: "msg-1",
         source: evidence[0]?.source,
+        text: "端午活动改到 2026/6/30，以这个为准。",
       },
     ]);
     expect(prompt.messages[0]?.content).toContain("证据互相矛盾");
