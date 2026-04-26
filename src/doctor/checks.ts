@@ -7,7 +7,6 @@ import { getGatewayStatus } from "../gateway/index.js";
 import { createChatModel, createEmbeddingModel } from "../llm/openai-compatible.js";
 import { MessageRepository } from "../messages/repository.js";
 import { hasEmbeddingConfig } from "../rag/factory.js";
-import { getLanceDbPath, LanceDbVectorStore } from "../rag/lancedb-store.js";
 
 export type DoctorStatus = "pass" | "warn" | "fail";
 
@@ -128,8 +127,9 @@ async function checkFilePipeline(config: AppConfig): Promise<DoctorCheck> {
 }
 
 async function checkLanceDb(config: AppConfig): Promise<DoctorCheck> {
-  let store: LanceDbVectorStore | null = null;
+  let store: { count(): Promise<number>; close(): void } | null = null;
   try {
+    const { getLanceDbPath, LanceDbVectorStore } = await import("../rag/lancedb-store.js");
     store = await LanceDbVectorStore.connectFromConfig(config);
     const count = await store.count();
     return pass("LanceDB", `${getLanceDbPath(config)}；vectors=${count}`);

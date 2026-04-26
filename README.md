@@ -334,6 +334,24 @@ npm run dev -- --help
 
 可以保留 SQLite FTS 关键词检索，但语义检索需要配置 embedding。建议运行 `chattercatcher doctor --online` 确认维度和连通性。
 
+### macOS 上提示 `Cannot find native binding` 怎么办？
+
+这是 LanceDB 的 native optional dependency 没有被 npm 装完整，常见于 npm 全局安装时漏装可选依赖。先重装：
+
+```bash
+npm uninstall -g chattercatcher
+npm install -g chattercatcher --include=optional
+```
+
+如果仍然失败，清理 npm cache 后再装：
+
+```bash
+npm cache clean --force
+npm install -g chattercatcher --include=optional
+```
+
+`chattercatcher --version` 和 `chattercatcher --help` 从 `0.1.1` 起不会加载 LanceDB native binding；只有 `index`、`process messages`、配置了 embedding 的问答等向量检索路径才需要 LanceDB native 包。
+
 ### 为什么要用 RAG？
 
 家庭聊天是长期知识库，不应该靠把全部历史消息塞进上下文。RAG 可以控制证据范围、保留来源、降低幻觉，并让回答可追溯。

@@ -2,7 +2,6 @@ import type { AppConfig, AppSecrets } from "../config/schema.js";
 import type { MessageRepository } from "../messages/repository.js";
 import { createEmbeddingModel } from "../llm/openai-compatible.js";
 import { HybridRetriever } from "./hybrid-retriever.js";
-import { LanceDbVectorStore } from "./lancedb-store.js";
 import { MessageFtsRetriever } from "./message-retriever.js";
 import type { Retriever } from "./retriever.js";
 import { VectorRetriever } from "./vector-retriever.js";
@@ -21,6 +20,7 @@ export async function createHybridRetriever(input: {
   const closers: Array<() => void> = [];
 
   if (hasEmbeddingConfig(input.config, input.secrets)) {
+    const { LanceDbVectorStore } = await import("./lancedb-store.js");
     const vectorStore = await LanceDbVectorStore.connectFromConfig(input.config);
     retrievers.push(new VectorRetriever(createEmbeddingModel(input.config, input.secrets), vectorStore));
     closers.push(() => vectorStore.close());

@@ -26,7 +26,6 @@ import { followLogFile, getLogsDirectory, normalizeLineCount, readLatestLogTail 
 import { MessageRepository } from "./messages/repository.js";
 import { createHybridRetriever, hasEmbeddingConfig } from "./rag/factory.js";
 import { indexMessageChunks } from "./rag/indexer.js";
-import { getLanceDbPath, LanceDbVectorStore } from "./rag/lancedb-store.js";
 import { processMessagesNow } from "./rag/manual-index.js";
 import { askWithRag } from "./rag/qa-service.js";
 import { formatCitation } from "./rag/citations.js";
@@ -103,7 +102,7 @@ function printSettings(config: AppConfig, secrets: AppSecrets): void {
 program
   .name("chattercatcher")
   .description("本地优先的飞书/Lark 家庭群知识机器人")
-  .version("0.1.0");
+  .version("0.1.1");
 
 program.command("setup").description("交互式初始化配置").action(async () => {
   const { config, secrets } = await ensureConfigFiles();
@@ -161,7 +160,10 @@ async function startGatewayCommand(): Promise<void> {
   }
 
   const database = openDatabase(config);
-  const vectorStore = hasEmbeddingConfig(config, secrets) ? await LanceDbVectorStore.connectFromConfig(config) : null;
+  const { LanceDbVectorStore } = hasEmbeddingConfig(config, secrets)
+    ? await import("./rag/lancedb-store.js")
+    : { LanceDbVectorStore: null };
+  const vectorStore = LanceDbVectorStore ? await LanceDbVectorStore.connectFromConfig(config) : null;
   const gatewayRuntime = createFeishuGateway({
     config,
     secrets,
@@ -301,6 +303,7 @@ index.command("status").description("查看索引状态").action(async () => {
   const secrets = await loadSecrets();
   const database = openDatabase(config);
   const messages = new MessageRepository(database);
+  const { getLanceDbPath, LanceDbVectorStore } = await import("./rag/lancedb-store.js");
   const vectorStore = await LanceDbVectorStore.connectFromConfig(config);
   const vectors = await vectorStore.count();
   console.log(JSON.stringify(
@@ -334,6 +337,7 @@ index.command("rebuild").description("重建 LanceDB 向量索引").option("--li
   }
 
   const database = openDatabase(config);
+  const { LanceDbVectorStore } = await import("./rag/lancedb-store.js");
   const vectorStore = await LanceDbVectorStore.connectFromConfig(config);
 
   try {

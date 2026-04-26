@@ -4,7 +4,6 @@ import { createEmbeddingModel } from "../llm/openai-compatible.js";
 import { MessageRepository } from "../messages/repository.js";
 import { hasEmbeddingConfig } from "./factory.js";
 import { indexMessageChunks } from "./indexer.js";
-import { LanceDbVectorStore } from "./lancedb-store.js";
 
 export interface ManualMessageIndexResult {
   status: "completed" | "skipped";
@@ -34,6 +33,7 @@ export async function processMessagesNow(input: {
     };
   }
 
+  const { LanceDbVectorStore } = await import("./lancedb-store.js");
   const vectorStore = await LanceDbVectorStore.connectFromConfig(input.config);
   try {
     const stats = await indexMessageChunks({
