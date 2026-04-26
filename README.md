@@ -336,7 +336,9 @@ npm run dev -- --help
 
 ### macOS 上提示 `Cannot find native binding` 怎么办？
 
-这是 LanceDB 的 native optional dependency 没有被 npm 装完整，常见于 npm 全局安装时漏装可选依赖。先重装：
+这是 LanceDB 的 native optional dependency 没有被 npm 装完整，常见于 npm 全局安装时漏装可选依赖。
+
+ChatterCatcher 从 `0.1.1` 起锁定到仍发布 `darwin-x64` 和 `darwin-arm64` native 包的 LanceDB 版本，以覆盖 Intel Mac 和 Apple Silicon Mac。先升级：
 
 ```bash
 npm uninstall -g chattercatcher
