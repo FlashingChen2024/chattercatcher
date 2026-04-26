@@ -112,12 +112,12 @@ flowchart LR
   Feishu["飞书/Lark 群"] --> Gateway["本地 Gateway"]
   Gateway --> Router["消息路由"]
 
-  Router -->|普通消息| SQLite["SQLite messages"]
+  Router -->|"普通消息"| SQLite["SQLite messages"]
   SQLite --> FTS["SQLite FTS5"]
   SQLite --> Indexer["Embedding Indexer"]
   Indexer --> LanceDB["LanceDB vectors"]
 
-  Router -->|@ 提问| QA["Question Handler"]
+  Router -->|"@ 提问"| QA["Question Handler"]
   QA --> Hybrid["Hybrid Retriever"]
   FTS --> Hybrid
   LanceDB --> Hybrid
