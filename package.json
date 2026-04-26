@@ -17,8 +17,10 @@
     "chattercatcher": "dist/cli.js"
   },
   "files": [
+    "assets",
     "dist",
     "docs",
+    "README.md",
     "AGENTS.md"
   ],
   "directories": {
