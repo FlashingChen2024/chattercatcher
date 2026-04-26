@@ -32,7 +32,7 @@ function buildHtml(): string {
         background: var(--bg);
         color: var(--text);
       }
-      main { max-width: 1120px; margin: 0 auto; padding: 32px 24px 48px; }
+      main { max-width: 1120px; margin: 0 auto; padding: 32px 24px 48px; overflow-x: hidden; }
       header {
         display: flex;
         justify-content: space-between;
@@ -58,7 +58,7 @@ function buildHtml(): string {
       .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
       .grid {
         display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
         gap: 12px;
         margin: 24px 0;
       }
@@ -70,21 +70,24 @@ function buildHtml(): string {
         min-height: 112px;
       }
       .label { color: var(--muted); font-size: 13px; }
-      .value { margin-top: 10px; font-size: 22px; font-weight: 650; overflow-wrap: anywhere; }
+      .value { margin-top: 10px; font-size: 22px; font-weight: 650; overflow-wrap: anywhere; line-height: 1.18; }
       .note { margin-top: 8px; color: var(--muted); font-size: 13px; line-height: 1.45; }
       .layout {
         display: grid;
-        grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
         gap: 24px;
       }
+      .layout > * { min-width: 0; }
       section { padding: 20px 0; border-top: 1px solid var(--line); }
       section:first-child { border-top: 0; }
-      table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-      th, td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      table { width: 100%; table-layout: fixed; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+      th, td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; overflow: hidden; text-overflow: ellipsis; }
       th { color: var(--muted); font-size: 13px; font-weight: 600; }
       tr:last-child td { border-bottom: 0; }
-      .message { max-width: 560px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .path { max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 13px; }
+      .message { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .id-text, .path { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 13px; }
+      .compact-table th:first-child, .compact-table td:first-child { width: 120px; }
+      .compact-table th:nth-child(2), .compact-table td:nth-child(2) { width: 180px; }
       .status-ok { color: var(--accent); }
       .status-warn { color: var(--warn); }
       .empty { color: var(--muted); padding: 18px; background: var(--panel); border: 1px dashed var(--line); border-radius: 8px; }
@@ -170,19 +173,30 @@ function buildHtml(): string {
           .replaceAll('"', "&quot;");
       }
 
+      function formatGatewayValue(gateway) {
+        if (gateway.connection === "running") return "运行中";
+        if (!gateway.configured) return "未配置";
+        return "待启动";
+      }
+
+      function formatGatewayNote(gateway) {
+        if (gateway.connection === "running" && gateway.pid) return "PID " + gateway.pid;
+        return "飞书长连接";
+      }
+
       function renderMetrics(status) {
         const gatewayClass = status.gateway.configured ? "status-ok" : "status-warn";
         metrics.innerHTML = [
-          ["Gateway", status.gateway.message, gatewayClass],
-          ["群聊", status.data.chats, ""],
-          ["消息", status.data.messages, ""],
-          ["文件", status.data.files, ""],
-          ["Web UI", status.web.host + ":" + status.web.port, ""],
-        ].map(([label, value, extra]) => \`
+          ["Gateway", formatGatewayValue(status.gateway), formatGatewayNote(status.gateway), gatewayClass],
+          ["群聊", status.data.chats, "本地群聊数", ""],
+          ["消息", status.data.messages, "已入库消息", ""],
+          ["文件", status.data.files, "文件知识源", ""],
+          ["Web UI", status.web.host + ":" + status.web.port, "本地监听", ""],
+        ].map(([label, value, note, extra]) => \`
           <div class="metric">
             <div class="label">\${escapeHtml(label)}</div>
             <div class="value \${extra}">\${escapeHtml(value)}</div>
-            <div class="note">\${label === "Gateway" ? "飞书长连接状态" : "本地 SQLite / LanceDB 数据"}</div>
+            <div class="note">\${escapeHtml(note)}</div>
           </div>
         \`).join("");
       }
@@ -195,14 +209,14 @@ function buildHtml(): string {
         }
         messages.className = "";
         messages.innerHTML = \`
-          <table>
+          <table class="compact-table">
             <thead><tr><th>时间</th><th>发送者</th><th>群聊</th><th>内容</th></tr></thead>
             <tbody>
               \${items.map((item) => \`
                 <tr>
                   <td>\${escapeHtml(item.sentAt)}</td>
-                  <td>\${escapeHtml(item.senderName)}</td>
-                  <td>\${escapeHtml(item.chatName)}</td>
+                  <td><span class="id-text" title="\${escapeHtml(item.senderName)}">\${escapeHtml(item.senderName)}</span></td>
+                  <td><span class="id-text" title="\${escapeHtml(item.chatName)}">\${escapeHtml(item.chatName)}</span></td>
                   <td class="message" title="\${escapeHtml(item.text)}">\${escapeHtml(item.text)}</td>
                 </tr>
               \`).join("")}
@@ -224,7 +238,7 @@ function buildHtml(): string {
             <tbody>
               \${items.map((item) => \`
                 <tr>
-                  <td>\${escapeHtml(item.name)}</td>
+                  <td><span class="id-text" title="\${escapeHtml(item.name)}">\${escapeHtml(item.name)}</span></td>
                   <td>\${escapeHtml(item.platform)}</td>
                 </tr>
               \`).join("")}
