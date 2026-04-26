@@ -34,6 +34,24 @@
 
 ---
 
+## 加入交流群
+
+<table>
+  <tr>
+    <td width="280" valign="top">
+      <img src="./assets/readme/feishu-community-qr.png" alt="ChatterCatcher 飞书交流群二维码" width="260" />
+    </td>
+    <td valign="top">
+      <h3>反馈、测试和共建</h3>
+      <p>扫描左侧二维码加入 ChatterCatcher 飞书交流群。</p>
+      <p>欢迎提交使用反馈、Bug、部署经验、飞书配置问题、RAG 行为建议和真实家庭群使用案例。</p>
+      <p><strong>GitHub 仓库：</strong><a href="https://github.com/FlashingChen2024/chattercatcher">https://github.com/FlashingChen2024/chattercatcher</a></p>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## 项目状态
 
 ChatterCatcher 是一个早期 MVP。它已经具备飞书长连接接入、本地消息存储、SQLite FTS、LanceDB 向量检索、OpenAI-compatible LLM/Embedding、CLI、本地 Web UI 和带引用回答。
