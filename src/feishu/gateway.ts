@@ -2,6 +2,7 @@ import * as lark from "@larksuiteoapi/node-sdk";
 import type { AppConfig, AppSecrets } from "../config/schema.js";
 import type { GatewayIngestAndDownloadResult, GatewayIngestor } from "../gateway/ingest.js";
 import type { FeishuReceiveMessageEvent } from "./normalize.js";
+import { getFeishuQuestionDecision, isFeishuMessageAddressedToBot } from "./question.js";
 import type { FeishuQuestionHandler } from "./question.js";
 import { FeishuResourceDownloader } from "./resource-downloader.js";
 import { mapDomain } from "./sender.js";
@@ -47,9 +48,30 @@ export function createFeishuEventDispatcher(options: {
   resourceDownloader?: FeishuResourceDownloader;
   attachmentVectorIndexer?: (messageId: string) => Promise<{ chunks: number; vectors: number }>;
 }): lark.EventDispatcher {
+  const answeredMessageIds = new Set<string>();
+
   return new lark.EventDispatcher({}).register({
     "im.message.receive_v1": async (data: FeishuReceiveMessageEvent["event"]) => {
       const payload = { event: data };
+
+      if (options.questionHandler && isFeishuMessageAddressedToBot(payload)) {
+        const platformMessageId = data?.message?.message_id;
+        if (platformMessageId && answeredMessageIds.has(platformMessageId)) {
+          console.log("飞书提问重复投递：已跳过回答。");
+          return;
+        }
+
+        const decision = getFeishuQuestionDecision(payload, options.config);
+        if (decision.shouldAnswer) {
+          if (platformMessageId) {
+            answeredMessageIds.add(platformMessageId);
+          }
+          await options.questionHandler.handle(payload);
+          console.log("飞书提问已回答：跳过知识库入库。");
+          return;
+        }
+      }
+
       const result: GatewayIngestAndDownloadResult = options.resourceDownloader
         ? await options.ingestor.ingestFeishuEventAndDownloadAttachments({
             payload,

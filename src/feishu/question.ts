@@ -51,6 +51,17 @@ function stripMentions(text: string, mentions: NonNullable<NonNullable<FeishuRec
   return result.replace(/@\s*ChatterCatcher/gi, " ").replace(/@/g, " ").replace(/\s+/g, " ").trim();
 }
 
+export function isFeishuMessageAddressedToBot(payload: FeishuReceiveMessageEvent): boolean {
+  const message = payload.event?.message;
+  if (!message || message.message_type !== "text") {
+    return false;
+  }
+
+  const mentions = message.mentions ?? [];
+  const text = parseTextContent(message.content);
+  return mentions.length > 0 || /@?ChatterCatcher/i.test(text);
+}
+
 export function getFeishuQuestionDecision(
   payload: FeishuReceiveMessageEvent,
   config: AppConfig,
@@ -65,9 +76,7 @@ export function getFeishuQuestionDecision(
 
   const mentions = message.mentions ?? [];
   const text = parseTextContent(message.content);
-  const hasMention =
-    mentions.length > 0 ||
-    /@?ChatterCatcher/i.test(text);
+  const hasMention = isFeishuMessageAddressedToBot(payload);
 
   if (config.feishu.requireMention && !hasMention) {
     return {
