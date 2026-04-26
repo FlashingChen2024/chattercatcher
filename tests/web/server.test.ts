@@ -91,6 +91,26 @@ describe("web server", () => {
       expect(response.body).toContain("本地优先的家庭群知识库");
       expect(response.body).toContain("不堆叠全量上下文");
       expect(response.body).toContain("文件库");
+      expect(response.body).toContain("立即处理");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("提供立即处理消息索引 API", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const app = createWebApp(config);
+    try {
+      const response = await app.inject({ method: "POST", url: "/api/process/messages" });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        status: "skipped",
+        chunks: 0,
+        vectors: 0,
+      });
+      expect(response.json().reason).toContain("Embedding 配置不完整");
     } finally {
       await app.close();
     }

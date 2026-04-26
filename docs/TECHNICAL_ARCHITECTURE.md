@@ -353,6 +353,7 @@ chattercatcher gateway restart
 chattercatcher logs --follow
 chattercatcher logs --lines 200 --file gateway.log
 chattercatcher index rebuild
+chattercatcher process messages
 chattercatcher export --out ./backup.json
 chattercatcher restore ./backup.json --replace
 chattercatcher data delete message <messageId> --yes
@@ -366,6 +367,8 @@ chattercatcher web start
 `restore` 默认合并导入导出文件中的 chats、messages、message_chunks 和 file_jobs，并重建 SQLite FTS。只有显式传入 `--replace` 时才会先清空当前本地知识库；恢复后如果使用 LanceDB 语义检索，需要运行 `index rebuild` 重建向量。
 
 `data delete` 删除 SQLite 知识库记录、关联 chunks、SQLite FTS 条目和文件解析任务。删除文件知识源时，只会清理位于 `storage.dataDir` 内的本地保存文件，不会删除外部源文件。删除后如果使用 LanceDB 语义检索，需要运行 `index rebuild` 清理向量侧残留。
+
+`process messages` 立即运行消息索引处理。SQLite FTS 在消息入库时已经即时更新；该命令主要用于立刻把消息 chunks 写入 LanceDB 向量索引，等价于手动触发原本可由定时任务承担的处理动作。Web UI 首页的“立即处理”按钮调用同一条 API。
 
 ## 测试策略
 

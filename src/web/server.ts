@@ -1,9 +1,11 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import { loadSecrets } from "../config/store.js";
 import type { AppConfig } from "../config/schema.js";
 import { openDatabase } from "../db/database.js";
 import { FileJobRepository } from "../files/jobs.js";
 import { getGatewayStatus } from "../gateway/index.js";
 import { MessageRepository } from "../messages/repository.js";
+import { processMessagesNow } from "../rag/manual-index.js";
 
 function buildHtml(): string {
   return `<!doctype html>
@@ -53,6 +55,7 @@ function buildHtml(): string {
         cursor: pointer;
       }
       button:hover { border-color: var(--accent); }
+      .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
       .grid {
         display: grid;
         grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -85,6 +88,7 @@ function buildHtml(): string {
       .status-ok { color: var(--accent); }
       .status-warn { color: var(--warn); }
       .empty { color: var(--muted); padding: 18px; background: var(--panel); border: 1px dashed var(--line); border-radius: 8px; }
+      .status-line { margin-top: 10px; font-size: 13px; color: var(--muted); text-align: right; }
       @media (max-width: 900px) {
         header, .layout { display: block; }
         .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -104,7 +108,13 @@ function buildHtml(): string {
           <h1>ChatterCatcher</h1>
           <p>本地优先的家庭群知识库。问答必须先检索 RAG 证据，不堆叠全量上下文。</p>
         </div>
-        <button id="refresh" type="button">刷新</button>
+        <div>
+          <div class="actions">
+            <button id="process-messages" type="button">立即处理</button>
+            <button id="refresh" type="button">刷新</button>
+          </div>
+          <div id="action-status" class="status-line"></div>
+        </div>
       </header>
 
       <div class="grid" id="metrics"></div>
@@ -145,6 +155,8 @@ function buildHtml(): string {
       const files = document.querySelector("#files");
       const fileJobs = document.querySelector("#file-jobs");
       const refresh = document.querySelector("#refresh");
+      const processMessages = document.querySelector("#process-messages");
+      const actionStatus = document.querySelector("#action-status");
 
       function fmt(value) {
         return value == null || value === "" ? "-" : String(value);
@@ -288,7 +300,32 @@ function buildHtml(): string {
         renderFileJobs(jobList.items);
       }
 
+      async function processNow() {
+        processMessages.disabled = true;
+        actionStatus.textContent = "正在处理消息索引...";
+        try {
+          const response = await fetch("/api/process/messages", { method: "POST" });
+          const result = await response.json();
+          if (!response.ok) {
+            actionStatus.textContent = result.message || "处理失败。";
+            return;
+          }
+
+          if (result.status === "skipped") {
+            actionStatus.textContent = result.reason;
+          } else {
+            actionStatus.textContent = \`处理完成：chunks=\${result.chunks}, vectors=\${result.vectors}\`;
+          }
+          await load();
+        } catch (error) {
+          actionStatus.textContent = error instanceof Error ? error.message : String(error);
+        } finally {
+          processMessages.disabled = false;
+        }
+      }
+
       refresh.addEventListener("click", () => void load());
+      processMessages.addEventListener("click", () => void processNow());
       void load();
     </script>
   </body>
@@ -354,6 +391,23 @@ export function createWebApp(config: AppConfig): FastifyInstance {
     return {
       items: messages.listRecentMessages(limit),
     };
+  });
+
+  app.post("/api/process/messages", async (_request, reply) => {
+    try {
+      return await processMessagesNow({
+        config,
+        secrets: await loadSecrets(),
+        database,
+        limit: 10_000,
+      });
+    } catch (error) {
+      reply.code(500);
+      return {
+        status: "failed",
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
   });
 
   app.get("/", async (_request, reply) => {

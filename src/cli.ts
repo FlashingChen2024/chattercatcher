@@ -27,6 +27,7 @@ import { MessageRepository } from "./messages/repository.js";
 import { createHybridRetriever, hasEmbeddingConfig } from "./rag/factory.js";
 import { indexMessageChunks } from "./rag/indexer.js";
 import { getLanceDbPath, LanceDbVectorStore } from "./rag/lancedb-store.js";
+import { processMessagesNow } from "./rag/manual-index.js";
 import { askWithRag } from "./rag/qa-service.js";
 import { startWebServer } from "./web/server.js";
 
@@ -347,6 +348,36 @@ index.command("rebuild").description("重建 LanceDB 向量索引").option("--li
     database.close();
   }
 });
+
+const processCommand = program.command("process").description("立即处理后台任务");
+
+processCommand
+  .command("messages")
+  .description("立即处理消息索引任务，把消息 chunks 写入 LanceDB 向量索引")
+  .option("--limit <number>", "最多处理的 chunk 数", "10000")
+  .action(async (options: { limit: string }) => {
+    const config = await loadConfig();
+    const secrets = await loadSecrets();
+    const database = openDatabase(config);
+    const limit = Number(options.limit);
+
+    try {
+      const result = await processMessagesNow({
+        config,
+        secrets,
+        database,
+        limit: Number.isFinite(limit) ? limit : 10000,
+      });
+      if (result.status === "skipped") {
+        console.log(`处理跳过：${result.reason}`);
+        return;
+      }
+
+      console.log(`消息处理完成：chunks=${result.chunks}, vectors=${result.vectors}`);
+    } finally {
+      database.close();
+    }
+  });
 
 const files = program.command("files").description("管理本地文件知识源");
 
