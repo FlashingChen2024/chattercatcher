@@ -3,6 +3,7 @@ export * from "./config/store.js";
 export * from "./config/update.js";
 export * from "./db/database.js";
 export * from "./doctor/checks.js";
+export * from "./export/data-export.js";
 export * from "./feishu/gateway.js";
 export * from "./feishu/normalize.js";
 export * from "./feishu/question.js";
