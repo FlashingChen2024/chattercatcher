@@ -102,7 +102,7 @@ function printSettings(config: AppConfig, secrets: AppSecrets): void {
 program
   .name("chattercatcher")
   .description("本地优先的飞书/Lark 家庭群知识机器人")
-  .version("0.1.2");
+  .version("0.1.3");
 
 program.command("setup").description("交互式初始化配置").action(async () => {
   const { config, secrets } = await ensureConfigFiles();

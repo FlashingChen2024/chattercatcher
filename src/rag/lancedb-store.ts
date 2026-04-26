@@ -1,4 +1,3 @@
-import * as lancedb from "@lancedb/lancedb";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AppConfig } from "../config/schema.js";
@@ -15,6 +14,24 @@ interface LanceVectorRow {
 
 interface LanceVectorSearchRow extends LanceVectorRow {
   _distance?: number;
+}
+
+interface LanceTable {
+  delete(filter: string): Promise<unknown>;
+  add(data: Record<string, unknown>[]): Promise<unknown>;
+  vectorSearch(vector: number[]): {
+    limit(limit: number): {
+      toArray(): Promise<unknown[]>;
+    };
+  };
+  countRows(): Promise<number>;
+}
+
+interface LanceConnection {
+  close(): void;
+  tableNames(): Promise<string[]>;
+  openTable(name: string): Promise<LanceTable>;
+  createTable(name: string, data: Record<string, unknown>[]): Promise<LanceTable>;
 }
 
 const DEFAULT_TABLE_NAME = "message_chunks";
@@ -60,13 +77,14 @@ function toEvidence(row: LanceVectorSearchRow): VectorSearchResult {
 
 export class LanceDbVectorStore implements VectorStore {
   private constructor(
-    private readonly connection: lancedb.Connection,
+    private readonly connection: LanceConnection,
     private readonly tableName: string,
   ) {}
 
   static async connect(uri: string, tableName = DEFAULT_TABLE_NAME): Promise<LanceDbVectorStore> {
     await fs.mkdir(uri, { recursive: true });
-    const connection = await lancedb.connect(uri);
+    const lancedb = await import("@lancedb/lancedb");
+    const connection = (await lancedb.connect(uri)) as LanceConnection;
     return new LanceDbVectorStore(connection, tableName);
   }
 
@@ -110,7 +128,7 @@ export class LanceDbVectorStore implements VectorStore {
     return table.countRows();
   }
 
-  private async ensureTable(initialRows: Record<string, unknown>[]): Promise<lancedb.Table> {
+  private async ensureTable(initialRows: Record<string, unknown>[]): Promise<LanceTable> {
     const table = await this.openTableIfExists();
     if (table) {
       return table;
@@ -119,7 +137,7 @@ export class LanceDbVectorStore implements VectorStore {
     return this.connection.createTable(this.tableName, initialRows);
   }
 
-  private async openTableIfExists(): Promise<lancedb.Table | null> {
+  private async openTableIfExists(): Promise<LanceTable | null> {
     const tableNames = await this.connection.tableNames();
     if (!tableNames.includes(this.tableName)) {
       return null;
