@@ -6,6 +6,7 @@ import type { AppConfig, AppSecrets } from "./config/schema.js";
 import { loadConfig, loadSecrets, resetConfigFiles, saveConfig, saveSecrets, ensureConfigFiles, maskSecret } from "./config/store.js";
 import { applySecretInput, resolveEmbeddingApiKey } from "./config/update.js";
 import { getChatterCatcherHome, getConfigPath, getSecretsPath } from "./config/paths.js";
+import { deleteLocalData, type DeleteTargetType } from "./data/deletion.js";
 import { getDatabasePath, openDatabase } from "./db/database.js";
 import { formatDoctorChecks, runDoctor } from "./doctor/checks.js";
 import { exportLocalData } from "./export/data-export.js";
@@ -233,6 +234,63 @@ web.command("start").description("启动本地 Web UI").action(async () => {
   const config = await loadConfig();
   await startWebServer(config);
 });
+
+const data = program.command("data").description("管理本地知识库数据");
+
+async function deleteDataCommand(targetType: DeleteTargetType, targetId: string, options: { yes?: boolean }): Promise<void> {
+  const shouldDelete =
+    options.yes ||
+    (await confirm({
+      message: `确认删除 ${targetType}=${targetId} 的本地知识库记录？`,
+      default: false,
+    }));
+
+  if (!shouldDelete) {
+    console.log("已取消。");
+    return;
+  }
+
+  const config = await loadConfig();
+  const database = openDatabase(config);
+  try {
+    const result = await deleteLocalData({ config, database, targetType, targetId });
+    console.log(
+      `删除完成：messages=${result.deletedMessages}，chunks=${result.deletedChunks}，fileJobs=${result.deletedFileJobs}，chats=${result.deletedChats}`,
+    );
+    if (result.deletedStoredFiles.length > 0) {
+      console.log(`已删除本地保存文件：${result.deletedStoredFiles.join("；")}`);
+    }
+    if (result.skippedStoredFiles.length > 0) {
+      console.log(`跳过非数据目录文件：${result.skippedStoredFiles.join("；")}`);
+    }
+    console.log("SQLite FTS 已同步删除；如使用 LanceDB 语义检索，请运行 chattercatcher index rebuild。");
+  } finally {
+    database.close();
+  }
+}
+
+const dataDelete = data.command("delete").description("删除指定本地知识库数据");
+
+dataDelete
+  .command("message")
+  .description("按消息 ID 删除一条消息及其 RAG chunks")
+  .argument("<messageId>", "消息 ID")
+  .option("--yes", "跳过确认")
+  .action((messageId: string, options: { yes?: boolean }) => deleteDataCommand("message", messageId, options));
+
+dataDelete
+  .command("file")
+  .description("按文件消息 ID 删除文件知识源、解析任务和 dataDir 内保存文件")
+  .argument("<messageId>", "文件消息 ID")
+  .option("--yes", "跳过确认")
+  .action((messageId: string, options: { yes?: boolean }) => deleteDataCommand("file", messageId, options));
+
+dataDelete
+  .command("chat")
+  .description("按群聊 ID 删除该群聊下的消息和 RAG chunks")
+  .argument("<chatId>", "群聊 ID")
+  .option("--yes", "跳过确认")
+  .action((chatId: string, options: { yes?: boolean }) => deleteDataCommand("chat", chatId, options));
 
 const index = program.command("index").description("管理 RAG 索引");
 

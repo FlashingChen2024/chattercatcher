@@ -1,6 +1,7 @@
 export * from "./config/schema.js";
 export * from "./config/store.js";
 export * from "./config/update.js";
+export * from "./data/deletion.js";
 export * from "./db/database.js";
 export * from "./doctor/checks.js";
 export * from "./export/data-export.js";
