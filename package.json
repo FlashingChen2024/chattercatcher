@@ -5,6 +5,14 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "homepage": "https://github.com/FlashingChen2024/chattercatcher#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FlashingChen2024/chattercatcher.git"
+  },
+  "bugs": {
+    "url": "https://github.com/FlashingChen2024/chattercatcher/issues"
+  },
   "bin": {
     "chattercatcher": "dist/cli.js"
   },
@@ -23,8 +31,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "feishu",
+    "lark",
+    "rag",
+    "local-first",
+    "knowledge-base"
+  ],
+  "author": "FlashingChen2024",
   "license": "MIT",
   "dependencies": {
     "@inquirer/prompts": "^8.4.2",
