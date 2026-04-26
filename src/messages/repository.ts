@@ -301,6 +301,13 @@ export class MessageRepository {
     return (this.database.prepare("SELECT COUNT(*) AS count FROM messages").get() as { count: number }).count;
   }
 
+  hasPlatformMessage(platform: string, platformMessageId: string): boolean {
+    const row = this.database
+      .prepare("SELECT 1 AS existsFlag FROM messages WHERE platform = ? AND platform_message_id = ? LIMIT 1")
+      .get(platform, platformMessageId) as { existsFlag: number } | undefined;
+    return Boolean(row);
+  }
+
   listChats(): ChatRecord[] {
     return this.database
       .prepare(

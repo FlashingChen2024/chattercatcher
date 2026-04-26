@@ -65,6 +65,11 @@ export function createFeishuEventDispatcher(options: {
       }
 
       console.log(`飞书消息已入库：${result.messageId}`);
+      if (result.duplicate) {
+        console.log("飞书消息重复投递：已跳过附件处理和回答。");
+        return;
+      }
+
       if (result.attachment?.downloaded) {
         console.log(`飞书附件已下载：${result.attachment.downloaded.storedPath}`);
         if (result.attachment.indexedMessageId) {

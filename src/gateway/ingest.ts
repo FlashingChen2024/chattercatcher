@@ -14,6 +14,7 @@ export interface GatewayIngestResult {
   accepted: boolean;
   messageId?: string;
   message?: IngestMessageInput;
+  duplicate?: boolean;
   reason?: string;
 }
 
@@ -68,11 +69,13 @@ export class GatewayIngestor {
       };
     }
 
+    const duplicate = this.messages.hasPlatformMessage(normalized.platform, normalized.platformMessageId);
     const messageId = this.messages.ingest(normalized);
     return {
       accepted: true,
       messageId,
       message: normalized,
+      duplicate,
     };
   }
 
@@ -83,7 +86,7 @@ export class GatewayIngestor {
     vectorIndexMessage?: (messageId: string) => Promise<{ chunks: number; vectors: number }>;
   }): Promise<GatewayIngestAndDownloadResult> {
     const result = this.ingestFeishuEvent(input.payload);
-    if (!result.accepted || !result.messageId || !result.message) {
+    if (!result.accepted || !result.messageId || !result.message || result.duplicate) {
       return result;
     }
 

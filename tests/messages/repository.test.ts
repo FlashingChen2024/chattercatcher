@@ -74,6 +74,8 @@ describe("message repository", () => {
       };
 
       messages.ingest({ ...base, text: "活动暂定 2026/5/30。" });
+      expect(messages.hasPlatformMessage("dev", "message-1")).toBe(true);
+      expect(messages.hasPlatformMessage("dev", "missing")).toBe(false);
       messages.ingest({ ...base, text: "活动改到 2026/6/30。" });
 
       expect(messages.getMessageCount()).toBe(1);

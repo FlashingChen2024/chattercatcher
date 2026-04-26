@@ -56,6 +56,37 @@ describe("GatewayIngestor", () => {
     }
   });
 
+  it("重复飞书事件会标记 duplicate，避免重复触发回答", () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const database = openDatabase(config);
+
+    try {
+      const ingestor = new GatewayIngestor(database);
+      const payload = {
+        event: {
+          sender: { sender_id: { open_id: "ou_mom" } },
+          message: {
+            message_id: "om_duplicate",
+            chat_id: "oc_family",
+            create_time: "1777111200000",
+            message_type: "text",
+            content: JSON.stringify({ text: "@小陈 编程课什么时候" }),
+          },
+        },
+      };
+
+      const first = ingestor.ingestFeishuEvent(payload);
+      const second = ingestor.ingestFeishuEvent(payload);
+
+      expect(first).toMatchObject({ accepted: true, duplicate: false });
+      expect(second).toMatchObject({ accepted: true, duplicate: true, messageId: first.messageId });
+      expect(new MessageRepository(database).getMessageCount()).toBe(1);
+    } finally {
+      database.close();
+    }
+  });
+
   it("飞书文本类附件下载后会进入 RAG 文件库", async () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;
