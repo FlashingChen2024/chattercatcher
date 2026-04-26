@@ -354,10 +354,13 @@ chattercatcher logs --follow
 chattercatcher logs --lines 200 --file gateway.log
 chattercatcher index rebuild
 chattercatcher export --out ./backup.json
+chattercatcher restore ./backup.json --replace
 chattercatcher web start
 ```
 
 `gateway start` 以前台进程运行，并在 `~/.chattercatcher/gateway.pid` 写入运行记录。`gateway stop` 读取该 PID 文件发送停止信号；如果 PID 已过期，会清理陈旧记录。后台服务安装仍属于 M3 的 service 能力。
+
+`restore` 默认合并导入导出文件中的 chats、messages、message_chunks 和 file_jobs，并重建 SQLite FTS。只有显式传入 `--replace` 时才会先清空当前本地知识库；恢复后如果使用 LanceDB 语义检索，需要运行 `index rebuild` 重建向量。
 
 ## 测试策略
 
