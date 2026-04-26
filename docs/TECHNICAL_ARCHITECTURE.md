@@ -349,6 +349,7 @@ chattercatcher doctor
 chattercatcher gateway start
 chattercatcher gateway status
 chattercatcher logs --follow
+chattercatcher logs --lines 200 --file gateway.log
 chattercatcher index rebuild
 chattercatcher export --out ./backup.json
 chattercatcher web start

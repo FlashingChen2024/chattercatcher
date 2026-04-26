@@ -14,6 +14,7 @@ export * from "./files/jobs.js";
 export * from "./files/parser.js";
 export * from "./gateway/ingest.js";
 export * from "./llm/openai-compatible.js";
+export * from "./logs/reader.js";
 export * from "./messages/chunker.js";
 export * from "./messages/repository.js";
 export * from "./messages/types.js";

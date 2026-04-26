@@ -19,6 +19,7 @@ import { FileJobRepository } from "./files/jobs.js";
 import { GatewayIngestor } from "./gateway/ingest.js";
 import { getGatewayStatus } from "./gateway/index.js";
 import { createChatModel, createEmbeddingModel } from "./llm/openai-compatible.js";
+import { followLogFile, getLogsDirectory, normalizeLineCount, readLatestLogTail } from "./logs/reader.js";
 import { MessageRepository } from "./messages/repository.js";
 import { createHybridRetriever, hasEmbeddingConfig } from "./rag/factory.js";
 import { indexMessageChunks } from "./rag/indexer.js";
@@ -400,8 +401,39 @@ files
     }
   });
 
-program.command("logs").description("查看日志").option("--follow", "持续输出日志").action((options: { follow?: boolean }) => {
-  console.log(options.follow ? "日志跟随将在日志文件接入后实现。" : "日志查看将在日志文件接入后实现。");
+program.command("logs").description("查看本地日志").option("--follow", "持续输出日志").option("--lines <number>", "显示末尾行数", "200").option("--file <name>", "指定日志文件名或绝对路径").action(async (options: { follow?: boolean; lines?: string; file?: string }) => {
+  const result = await readLatestLogTail({
+    fileName: options.file,
+    lines: normalizeLineCount(options.lines),
+  });
+
+  if (!result) {
+    console.log(`还没有日志文件：${getLogsDirectory()}`);
+    return;
+  }
+
+  console.log(`日志文件：${result.file.path}`);
+  if (result.content) {
+    console.log(result.content);
+  }
+
+  if (!options.follow) {
+    return;
+  }
+
+  const stop = await followLogFile({
+    filePath: result.file.path,
+    onChunk: (chunk) => process.stdout.write(chunk),
+    onError: (error) => console.error(`日志跟随失败：${error.message}`),
+  });
+
+  const shutdown = () => {
+    stop();
+    process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+  await new Promise(() => undefined);
 });
 
 program.command("export").description("导出本地知识库数据（不包含密钥）").option("--out <path>", "导出 JSON 文件路径").action(async (options: { out?: string }) => {
