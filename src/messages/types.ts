@@ -50,6 +50,7 @@ export interface IngestMessageInput {
 export interface MessageSearchResult {
   chunkId: string;
   messageId: string;
+  platform: string;
   text: string;
   score: number;
   messageType: string;

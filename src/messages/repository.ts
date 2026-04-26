@@ -160,6 +160,7 @@ export class MessageRepository {
         SELECT
           mc.id AS chunkId,
           m.id AS messageId,
+          m.platform AS platform,
           mc.text AS text,
           1.0 AS score,
           m.message_type AS messageType,
@@ -183,6 +184,7 @@ export class MessageRepository {
         SELECT
           mc.id AS chunkId,
           m.id AS messageId,
+          m.platform AS platform,
           mc.text AS text,
           1.0 AS score,
           m.message_type AS messageType,
@@ -210,6 +212,7 @@ export class MessageRepository {
         SELECT
           mc.id AS chunkId,
           m.id AS messageId,
+          m.platform AS platform,
           mc.text AS text,
           1.0 AS score,
           m.message_type AS messageType,
@@ -237,6 +240,7 @@ export class MessageRepository {
         SELECT
           fts.chunk_id AS chunkId,
           fts.message_id AS messageId,
+          m.platform AS platform,
           mc.text AS text,
           bm25(message_chunks_fts) * -1 AS score,
           m.message_type AS messageType,
@@ -275,6 +279,7 @@ export class MessageRepository {
         SELECT
           mc.id AS chunkId,
           m.id AS messageId,
+          m.platform AS platform,
           mc.text AS text,
           0.1 AS score,
           m.message_type AS messageType,

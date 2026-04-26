@@ -80,6 +80,11 @@ function buildHtml(): string {
       .layout > * { min-width: 0; }
       section { padding: 20px 0; border-top: 1px solid var(--line); }
       section:first-child { border-top: 0; }
+      .message-list { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+      .message-item { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+      .message-item:last-child { border-bottom: 0; }
+      .message-meta { display: flex; flex-wrap: wrap; gap: 8px 14px; color: var(--muted); font-size: 13px; line-height: 1.4; }
+      .message-body { margin-top: 8px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
       table { width: 100%; table-layout: fixed; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
       th, td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; overflow: hidden; text-overflow: ellipsis; }
       th { color: var(--muted); font-size: 13px; font-weight: 600; }
@@ -100,7 +105,6 @@ function buildHtml(): string {
       @media (max-width: 560px) {
         main { padding: 24px 16px 36px; }
         .grid { grid-template-columns: 1fr; }
-        th:nth-child(3), td:nth-child(3) { display: none; }
       }
     </style>
   </head>
@@ -114,7 +118,6 @@ function buildHtml(): string {
         <div>
           <div class="actions">
             <button id="process-messages" type="button">立即处理</button>
-            <button id="refresh" type="button">刷新</button>
           </div>
           <div id="action-status" class="status-line"></div>
         </div>
@@ -157,7 +160,6 @@ function buildHtml(): string {
       const chats = document.querySelector("#chats");
       const files = document.querySelector("#files");
       const fileJobs = document.querySelector("#file-jobs");
-      const refresh = document.querySelector("#refresh");
       const processMessages = document.querySelector("#process-messages");
       const actionStatus = document.querySelector("#action-status");
 
@@ -171,6 +173,34 @@ function buildHtml(): string {
           .replaceAll("<", "&lt;")
           .replaceAll(">", "&gt;")
           .replaceAll('"', "&quot;");
+      }
+
+      function isOpaqueId(value) {
+        return /^(ou|oc|om|cli|on|un|uid)_?[a-z0-9]+/i.test(fmt(value));
+      }
+
+      function formatDateTime(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return fmt(value);
+        const pad = (input) => String(input).padStart(2, "0");
+        return [
+          date.getFullYear(),
+          pad(date.getMonth() + 1),
+          pad(date.getDate()),
+        ].join("/") + " " + [
+          pad(date.getHours()),
+          pad(date.getMinutes()),
+          pad(date.getSeconds()),
+        ].join(":");
+      }
+
+      function displaySender(value) {
+        return isOpaqueId(value) ? "群成员" : fmt(value);
+      }
+
+      function displayChatName(value, platform) {
+        if (!isOpaqueId(value)) return fmt(value);
+        return platform === "feishu" ? "飞书群聊" : "群聊";
       }
 
       function formatGatewayValue(gateway) {
@@ -191,7 +221,6 @@ function buildHtml(): string {
           ["群聊", status.data.chats, "本地群聊数", ""],
           ["消息", status.data.messages, "已入库消息", ""],
           ["文件", status.data.files, "文件知识源", ""],
-          ["Web UI", status.web.host + ":" + status.web.port, "本地监听", ""],
         ].map(([label, value, note, extra]) => \`
           <div class="metric">
             <div class="label">\${escapeHtml(label)}</div>
@@ -209,19 +238,18 @@ function buildHtml(): string {
         }
         messages.className = "";
         messages.innerHTML = \`
-          <table class="compact-table">
-            <thead><tr><th>时间</th><th>发送者</th><th>群聊</th><th>内容</th></tr></thead>
-            <tbody>
+          <div class="message-list">
               \${items.map((item) => \`
-                <tr>
-                  <td>\${escapeHtml(item.sentAt)}</td>
-                  <td><span class="id-text" title="\${escapeHtml(item.senderName)}">\${escapeHtml(item.senderName)}</span></td>
-                  <td><span class="id-text" title="\${escapeHtml(item.chatName)}">\${escapeHtml(item.chatName)}</span></td>
-                  <td class="message" title="\${escapeHtml(item.text)}">\${escapeHtml(item.text)}</td>
-                </tr>
+                <article class="message-item">
+                  <div class="message-meta">
+                    <span>\${escapeHtml(formatDateTime(item.sentAt))}</span>
+                    <span>\${escapeHtml(displaySender(item.senderName))}</span>
+                    <span>\${escapeHtml(displayChatName(item.chatName, item.platform))}</span>
+                  </div>
+                  <div class="message-body">\${escapeHtml(item.text)}</div>
+                </article>
               \`).join("")}
-            </tbody>
-          </table>
+          </div>
         \`;
       }
 
@@ -238,7 +266,7 @@ function buildHtml(): string {
             <tbody>
               \${items.map((item) => \`
                 <tr>
-                  <td><span class="id-text" title="\${escapeHtml(item.name)}">\${escapeHtml(item.name)}</span></td>
+                  <td><span class="id-text" title="\${escapeHtml(item.name)}">\${escapeHtml(displayChatName(item.name, item.platform))}</span></td>
                   <td>\${escapeHtml(item.platform)}</td>
                 </tr>
               \`).join("")}
@@ -338,9 +366,13 @@ function buildHtml(): string {
         }
       }
 
-      refresh.addEventListener("click", () => void load());
       processMessages.addEventListener("click", () => void processNow());
       void load();
+      setInterval(() => {
+        if (document.visibilityState === "visible") {
+          void load();
+        }
+      }, 5000);
     </script>
   </body>
 </html>`;

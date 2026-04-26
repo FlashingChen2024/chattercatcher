@@ -92,6 +92,9 @@ describe("web server", () => {
       expect(response.body).toContain("不堆叠全量上下文");
       expect(response.body).toContain("文件库");
       expect(response.body).toContain("立即处理");
+      expect(response.body).toContain("setInterval");
+      expect(response.body).not.toContain("id=\"refresh\"");
+      expect(response.body).not.toContain(">刷新<");
     } finally {
       await app.close();
     }
