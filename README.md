@@ -7,6 +7,10 @@
 <h1 align="center">ChatterCatcher</h1>
 
 <p align="center">
+  <img src="./assets/chattercatcher-logo.png" alt="ChatterCatcher logo" width="128" />
+</p>
+
+<p align="center">
   <strong>本地优先、证据驱动、面向飞书/Lark 家庭群的 RAG 记忆机器人。</strong>
 </p>
 
