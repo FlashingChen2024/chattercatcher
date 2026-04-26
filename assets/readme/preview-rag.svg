@@ -1,0 +1,18 @@
+<svg width="720" height="420" viewBox="0 0 720 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="420" rx="24" fill="#F6F2EA"/>
+  <rect x="54" y="74" width="180" height="230" rx="24" fill="#FFFFFF" stroke="#D8D1C5" stroke-width="2"/>
+  <rect x="270" y="74" width="180" height="230" rx="24" fill="#ECF7F4" stroke="#9CCFC5" stroke-width="2"/>
+  <rect x="486" y="74" width="180" height="230" rx="24" fill="#FFFFFF" stroke="#D8D1C5" stroke-width="2"/>
+  <text x="94" y="126" fill="#14202B" font-family="Inter, ui-sans-serif, system-ui" font-size="28" font-weight="800">SQLite</text>
+  <text x="109" y="166" fill="#56657A" font-family="Inter, ui-sans-serif, system-ui" font-size="20">FTS5</text>
+  <text x="306" y="126" fill="#14202B" font-family="Inter, ui-sans-serif, system-ui" font-size="28" font-weight="800">LanceDB</text>
+  <text x="314" y="166" fill="#56657A" font-family="Inter, ui-sans-serif, system-ui" font-size="20">vectors</text>
+  <text x="526" y="126" fill="#14202B" font-family="Inter, ui-sans-serif, system-ui" font-size="28" font-weight="800">Hybrid</text>
+  <text x="526" y="166" fill="#56657A" font-family="Inter, ui-sans-serif, system-ui" font-size="20">rerank</text>
+  <path d="M234 190H270" stroke="#2F8F83" stroke-width="8" stroke-linecap="round"/>
+  <path d="M450 190H486" stroke="#2F8F83" stroke-width="8" stroke-linecap="round"/>
+  <rect x="90" y="220" width="108" height="20" rx="10" fill="#EAE3D5"/>
+  <rect x="306" y="220" width="108" height="20" rx="10" fill="#B9DED6"/>
+  <rect x="522" y="220" width="108" height="20" rx="10" fill="#EAE3D5"/>
+  <text x="54" y="360" fill="#14202B" font-family="Inter, ui-sans-serif, system-ui" font-size="22">关键词检索 + 语义检索，共同召回可引用证据</text>
+</svg>

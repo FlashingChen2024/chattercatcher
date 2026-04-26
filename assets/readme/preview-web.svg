@@ -1,0 +1,20 @@
+<svg width="720" height="420" viewBox="0 0 720 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="420" rx="24" fill="#F6F2EA"/>
+  <text x="48" y="64" fill="#14202B" font-family="Inter, ui-sans-serif, system-ui" font-size="34" font-weight="800">ChatterCatcher</text>
+  <rect x="48" y="96" width="140" height="96" rx="18" fill="#FFFFFF" stroke="#D8D1C5"/>
+  <rect x="208" y="96" width="140" height="96" rx="18" fill="#FFFFFF" stroke="#D8D1C5"/>
+  <rect x="368" y="96" width="140" height="96" rx="18" fill="#FFFFFF" stroke="#D8D1C5"/>
+  <rect x="528" y="96" width="140" height="96" rx="18" fill="#FFFFFF" stroke="#D8D1C5"/>
+  <text x="72" y="134" fill="#56657A" font-family="Inter, ui-sans-serif, system-ui" font-size="18">Gateway</text>
+  <text x="72" y="170" fill="#2F8F83" font-family="Inter, ui-sans-serif, system-ui" font-size="28" font-weight="800">运行中</text>
+  <text x="232" y="134" fill="#56657A" font-family="Inter, ui-sans-serif, system-ui" font-size="18">群聊</text>
+  <text x="232" y="170" fill="#14202B" font-family="Inter, ui-sans-serif, system-ui" font-size="32" font-weight="800">2</text>
+  <text x="392" y="134" fill="#56657A" font-family="Inter, ui-sans-serif, system-ui" font-size="18">消息</text>
+  <text x="392" y="170" fill="#14202B" font-family="Inter, ui-sans-serif, system-ui" font-size="32" font-weight="800">128</text>
+  <text x="552" y="134" fill="#56657A" font-family="Inter, ui-sans-serif, system-ui" font-size="18">文件</text>
+  <text x="552" y="170" fill="#14202B" font-family="Inter, ui-sans-serif, system-ui" font-size="32" font-weight="800">8</text>
+  <rect x="48" y="236" width="620" height="108" rx="20" fill="#FFFFFF"/>
+  <rect x="80" y="270" width="180" height="18" rx="9" fill="#EAE3D5"/>
+  <rect x="80" y="306" width="470" height="18" rx="9" fill="#EAE3D5"/>
+  <rect x="574" y="266" width="58" height="34" rx="17" fill="#2F8F83"/>
+</svg>

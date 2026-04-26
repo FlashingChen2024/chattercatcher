@@ -1,0 +1,13 @@
+<svg width="720" height="420" viewBox="0 0 720 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="420" rx="24" fill="#17212D"/>
+  <rect x="36" y="34" width="210" height="34" rx="17" fill="#2F8F83"/>
+  <text x="56" y="58" fill="#fff" font-family="Inter, ui-sans-serif, system-ui" font-size="18" font-weight="700">Feishu group</text>
+  <rect x="54" y="104" width="394" height="54" rx="20" fill="#263545"/>
+  <rect x="54" y="184" width="326" height="54" rx="20" fill="#263545"/>
+  <rect x="258" y="264" width="386" height="54" rx="20" fill="#2F6FED"/>
+  <text x="78" y="138" fill="#E9F0F2" font-family="Inter, ui-sans-serif, system-ui" font-size="22">明天要上编程课，时间是13:20</text>
+  <text x="78" y="218" fill="#E9F0F2" font-family="Inter, ui-sans-serif, system-ui" font-size="22">编程课的时间改成了后天13:40</text>
+  <text x="282" y="298" fill="#FFFFFF" font-family="Inter, ui-sans-serif, system-ui" font-size="22">@小陈 最近一次编程课是什么时候</text>
+  <circle cx="606" cy="70" r="22" fill="#F7C948"/>
+  <text x="54" y="370" fill="#9FB2C7" font-family="Inter, ui-sans-serif, system-ui" font-size="20">普通消息入库；@ 提问跳过入库</text>
+</svg>
