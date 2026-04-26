@@ -13,6 +13,7 @@ export * from "./files/ingest.js";
 export * from "./files/jobs.js";
 export * from "./files/parser.js";
 export * from "./gateway/ingest.js";
+export * from "./gateway/runtime.js";
 export * from "./llm/openai-compatible.js";
 export * from "./logs/reader.js";
 export * from "./messages/chunker.js";

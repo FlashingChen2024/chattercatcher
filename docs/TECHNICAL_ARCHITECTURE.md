@@ -348,12 +348,16 @@ chattercatcher settings
 chattercatcher doctor
 chattercatcher gateway start
 chattercatcher gateway status
+chattercatcher gateway stop
+chattercatcher gateway restart
 chattercatcher logs --follow
 chattercatcher logs --lines 200 --file gateway.log
 chattercatcher index rebuild
 chattercatcher export --out ./backup.json
 chattercatcher web start
 ```
+
+`gateway start` 以前台进程运行，并在 `~/.chattercatcher/gateway.pid` 写入运行记录。`gateway stop` 读取该 PID 文件发送停止信号；如果 PID 已过期，会清理陈旧记录。后台服务安装仍属于 M3 的 service 能力。
 
 ## 测试策略
 
