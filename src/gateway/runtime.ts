@@ -1,11 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getChatterCatcherHome } from "../config/paths.js";
+import { getLogsDirectory } from "../logs/reader.js";
 
 export interface GatewayPidRecord {
   pid: number;
   startedAt: string;
   command: string;
+  logFile?: string;
+  mode?: "gateway" | "web";
 }
 
 export interface GatewayRuntimeState {
@@ -22,6 +25,10 @@ export interface StopGatewayResult {
 
 export function getGatewayPidPath(): string {
   return path.join(getChatterCatcherHome(), "gateway.pid");
+}
+
+export function getGatewayLogPath(): string {
+  return path.join(getLogsDirectory(), "gateway.log");
 }
 
 export function isProcessRunning(pid: number): boolean {
@@ -54,6 +61,8 @@ export function readGatewayPidRecord(pidFile = getGatewayPidPath()): GatewayPidR
       pid,
       startedAt: parsed.startedAt,
       command: parsed.command,
+      ...(typeof parsed.logFile === "string" ? { logFile: parsed.logFile } : {}),
+      ...(parsed.mode === "gateway" || parsed.mode === "web" ? { mode: parsed.mode } : {}),
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {

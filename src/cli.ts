@@ -19,8 +19,9 @@ import { FeishuMessageSender } from "./feishu/sender.js";
 import { ingestLocalFile } from "./files/ingest.js";
 import { FileJobRepository } from "./files/jobs.js";
 import { GatewayIngestor } from "./gateway/ingest.js";
+import { startDetachedGateway } from "./gateway/detached.js";
 import { getGatewayStatus } from "./gateway/index.js";
-import { removeGatewayPidRecord, stopGatewayProcess, writeGatewayPidRecord } from "./gateway/runtime.js";
+import { getGatewayLogPath, removeGatewayPidRecord, stopGatewayProcess, writeGatewayPidRecord } from "./gateway/runtime.js";
 import { createChatModel, createEmbeddingModel } from "./llm/openai-compatible.js";
 import { followLogFile, getLogsDirectory, normalizeLineCount, readLatestLogTail } from "./logs/reader.js";
 import { MessageRepository } from "./messages/repository.js";
@@ -102,7 +103,7 @@ function printSettings(config: AppConfig, secrets: AppSecrets): void {
 program
   .name("chattercatcher")
   .description("本地优先的飞书/Lark 家庭群知识机器人")
-  .version("0.1.4");
+  .version("0.1.5");
 
 program.command("setup").description("交互式初始化配置").action(async () => {
   const { config, secrets } = await ensureConfigFiles();
@@ -148,16 +149,32 @@ program.command("doctor").description("检查本地配置、存储和可选在�
 
 const gateway = program.command("gateway").description("管理本地飞书 Gateway");
 
-async function startGatewayCommand(): Promise<void> {
+async function startGatewayForegroundCommand(): Promise<void> {
   const config = await loadConfig();
   const secrets = await loadSecrets();
   const status = getGatewayStatus(config, secrets);
+  const pidRecordBase = {
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+    command: process.argv.join(" "),
+    logFile: getGatewayLogPath(),
+  };
+
   if (!status.configured) {
+    writeGatewayPidRecord(undefined, {
+      ...pidRecordBase,
+      mode: "web",
+    });
     console.log(status.message);
     console.log("本地 Web UI 仍会启动，方便继续配置。");
     await startWebServer(config);
     return;
   }
+
+  writeGatewayPidRecord(undefined, {
+    ...pidRecordBase,
+    mode: "gateway",
+  });
 
   const database = openDatabase(config);
   const { LanceDbVectorStore } = hasEmbeddingConfig(config, secrets)
@@ -204,7 +221,6 @@ async function startGatewayCommand(): Promise<void> {
   });
 
   console.log(status.message);
-  writeGatewayPidRecord();
 
   try {
     await gatewayRuntime.start();
@@ -215,13 +231,36 @@ async function startGatewayCommand(): Promise<void> {
   }
 }
 
+async function startGatewayCommand(options: { foreground?: boolean } = {}): Promise<void> {
+  if (options.foreground) {
+    await startGatewayForegroundCommand();
+    return;
+  }
+
+  const config = await loadConfig();
+  const secrets = await loadSecrets();
+  const result = startDetachedGateway({ config, secrets });
+
+  console.log(result.message);
+  if (result.pid) {
+    console.log(`PID：${result.pid}`);
+  }
+  console.log(`日志文件：${result.logFile}`);
+  console.log("查看日志：chattercatcher logs --follow --file gateway.log");
+  console.log("停止 Gateway：chattercatcher gateway stop");
+}
+
 gateway.command("status").description("查看 Gateway 状态").action(async () => {
   const config = await loadConfig();
   const secrets = await loadSecrets();
   console.log(JSON.stringify(getGatewayStatus(config, secrets), null, 2));
 });
 
-gateway.command("start").description("启动飞书长连接 Gateway 和本地 Web UI").action(startGatewayCommand);
+gateway
+  .command("start")
+  .description("启动飞书长连接 Gateway 和本地 Web UI")
+  .option("--foreground", "在当前终端以前台模式运行")
+  .action(startGatewayCommand);
 
 gateway.command("stop").description("停止 Gateway").action(() => {
   console.log(stopGatewayProcess().message);
