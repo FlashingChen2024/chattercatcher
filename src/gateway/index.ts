@@ -8,9 +8,35 @@ export interface GatewayStatus {
   message: string;
   pid?: number;
   pidFile?: string;
+  logFile?: string;
 }
 
 export function getGatewayStatus(config: AppConfig, secrets?: AppSecrets): GatewayStatus {
+  const runtime = getGatewayRuntimeState();
+  const configured = Boolean(config.feishu.appId && (!secrets || secrets.feishu.appSecret));
+
+  if (runtime.running && runtime.record) {
+    if (runtime.record.mode === "web" && !configured) {
+      return {
+        configured,
+        connection: "running",
+        message: `本地 Web UI 进程正在运行：pid=${runtime.record.pid}，startedAt=${runtime.record.startedAt}；飞书配置尚未完成。`,
+        pid: runtime.record.pid,
+        pidFile: runtime.pidFile,
+        logFile: runtime.record.logFile,
+      };
+    }
+
+    return {
+      configured: true,
+      connection: "running",
+      message: `飞书 Gateway 正在运行：pid=${runtime.record.pid}，startedAt=${runtime.record.startedAt}`,
+      pid: runtime.record.pid,
+      pidFile: runtime.pidFile,
+      logFile: runtime.record.logFile,
+    };
+  }
+
   if (!config.feishu.appId) {
     return {
       configured: false,
@@ -27,17 +53,6 @@ export function getGatewayStatus(config: AppConfig, secrets?: AppSecrets): Gatew
     };
   }
 
-  const runtime = getGatewayRuntimeState();
-  if (runtime.running && runtime.record) {
-    return {
-      configured: true,
-      connection: "running",
-      message: `飞书 Gateway 正在运行：pid=${runtime.record.pid}，startedAt=${runtime.record.startedAt}`,
-      pid: runtime.record.pid,
-      pidFile: runtime.pidFile,
-    };
-  }
-
   if (runtime.stale && runtime.record) {
     return {
       configured: true,
@@ -45,6 +60,7 @@ export function getGatewayStatus(config: AppConfig, secrets?: AppSecrets): Gatew
       message: `飞书长连接配置已就绪；发现过期 PID 文件：pid=${runtime.record.pid}。运行 chattercatcher gateway start 会覆盖运行记录。`,
       pid: runtime.record.pid,
       pidFile: runtime.pidFile,
+      logFile: runtime.record.logFile,
     };
   }
 

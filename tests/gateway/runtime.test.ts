@@ -49,6 +49,71 @@ describe("gateway runtime", () => {
     expect(readGatewayPidRecord(pidFile)).toBeNull();
   });
 
+  it("读取 PID 文件时保留日志文件路径和有效 mode", () => {
+    writeGatewayPidRecord(pidFile, {
+      pid: process.pid,
+      startedAt: "2026-04-26T00:00:00.000Z",
+      command: "chattercatcher gateway start",
+      logFile: path.join(testHome, "logs", "gateway.log"),
+      mode: "gateway",
+    });
+
+    expect(readGatewayPidRecord(pidFile)).toEqual({
+      pid: process.pid,
+      startedAt: "2026-04-26T00:00:00.000Z",
+      command: "chattercatcher gateway start",
+      logFile: path.join(testHome, "logs", "gateway.log"),
+      mode: "gateway",
+    });
+  });
+
+  it("读取 PID 文件时忽略无效 mode", () => {
+    fs.mkdirSync(path.dirname(pidFile), { recursive: true });
+    fs.writeFileSync(
+      pidFile,
+      `${JSON.stringify(
+        {
+          pid: process.pid,
+          startedAt: "2026-04-26T00:00:00.000Z",
+          command: "chattercatcher gateway start",
+          mode: "invalid",
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    expect(readGatewayPidRecord(pidFile)).toEqual({
+      pid: process.pid,
+      startedAt: "2026-04-26T00:00:00.000Z",
+      command: "chattercatcher gateway start",
+    });
+  });
+
+  it("读取旧格式 PID 文件时不要求日志文件路径", () => {
+    fs.mkdirSync(path.dirname(pidFile), { recursive: true });
+    fs.writeFileSync(
+      pidFile,
+      `${JSON.stringify(
+        {
+          pid: process.pid,
+          startedAt: "2026-04-26T00:00:00.000Z",
+          command: "chattercatcher gateway start",
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    expect(readGatewayPidRecord(pidFile)).toEqual({
+      pid: process.pid,
+      startedAt: "2026-04-26T00:00:00.000Z",
+      command: "chattercatcher gateway start",
+    });
+  });
+
   it("清理陈旧 PID 文件", () => {
     writeGatewayPidRecord(pidFile, {
       pid: 999_999_999,
@@ -66,12 +131,15 @@ describe("gateway runtime", () => {
   it("状态能识别运行中的 Gateway PID", () => {
     const config = createDefaultConfig();
     const secrets = createDefaultSecrets();
+    const logFile = path.join(testHome, "logs", "gateway.log");
     config.feishu.appId = "cli_app";
     secrets.feishu.appSecret = "secret";
     writeGatewayPidRecord(pidFile, {
       pid: process.pid,
       startedAt: "2026-04-26T00:00:00.000Z",
       command: "chattercatcher gateway start",
+      logFile,
+      mode: "gateway",
     });
 
     expect(getGatewayStatus(config, secrets)).toMatchObject({
@@ -79,6 +147,30 @@ describe("gateway runtime", () => {
       connection: "running",
       pid: process.pid,
       pidFile,
+      logFile,
     });
+  });
+
+  it("未完成配置时运行中的 Web UI PID 也会阻止重复启动", () => {
+    const config = createDefaultConfig();
+    const secrets = createDefaultSecrets();
+    const logFile = path.join(testHome, "logs", "gateway.log");
+    secrets.feishu.appSecret = "secret";
+    writeGatewayPidRecord(pidFile, {
+      pid: process.pid,
+      startedAt: "2026-04-26T00:00:00.000Z",
+      command: "chattercatcher gateway start --foreground",
+      logFile,
+      mode: "web",
+    });
+
+    expect(getGatewayStatus(config, secrets)).toMatchObject({
+      configured: false,
+      connection: "running",
+      pid: process.pid,
+      pidFile,
+      logFile,
+    });
+    expect(getGatewayStatus(config, secrets).message).toContain("Web UI");
   });
 });
