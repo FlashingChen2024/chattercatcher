@@ -5,3 +5,5 @@ coverage/
 .chattercatcher-test/
 /config/
 npm-debug.log*
+.DS_Store
+data/
