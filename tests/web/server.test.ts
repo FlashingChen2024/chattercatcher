@@ -52,7 +52,13 @@ describe("web server", () => {
       expect(status.json()).toMatchObject({
         app: "ChatterCatcher",
         data: { chats: 2, messages: 2, files: 1 },
-        rag: { mode: "required" },
+        rag: {
+          mode: "required",
+          retrieval: {
+            keyword: "SQLite FTS5",
+            vector: "SQLite embedding",
+          },
+        },
       });
 
       const chats = await app.inject({ method: "GET", url: "/api/chats" });
