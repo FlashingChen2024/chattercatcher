@@ -62,12 +62,12 @@ flowchart TD
 
 ### 存储
 
-- SQLite：元数据、原始消息、任务、配置、事实。
+- SQLite：元数据、原始消息、任务、配置、事实、embedding 向量。
 - Drizzle ORM：schema 和 migration。
 - SQLite FTS5：关键词检索。
-- LanceDB 或其他本地嵌入式向量库：embedding 检索。
+- SQLite embedding 向量索引：语义检索，向量存入 `message_chunk_embeddings`，运行时在 Node.js 侧计算余弦相似度。
 
-SQLite 不能作为完整 RAG 的唯一后端。它只负责结构化元数据和关键词召回；语义召回必须走向量库 adapter。MVP 默认优先本地向量库，首选 LanceDB，保留 Qdrant/Chroma adapter 扩展空间。
+SQLite 同时负责结构化元数据、关键词召回和本地 embedding 向量存储。MVP 不引入需要平台 native optional dependency 的外部向量库，以保证 npm 全局安装后可直接运行。
 
 ### LLM 和 Embedding
 
@@ -179,8 +179,8 @@ chunk_id
 provider
 model
 dimension
-vector_ref
-created_at
+embedding_json
+updated_at
 ```
 
 ### facts
@@ -231,7 +231,7 @@ RAG 是强制架构路径，不能被 prompt 堆叠替代。
 检索流程：
 
 1. 问题改写和意图识别。
-2. 对 chunk 做向量检索，默认接本地向量库 adapter。
+2. 对 chunk 做 SQLite embedding 向量检索。
 3. 通过 SQLite FTS5 做关键词检索。
 4. 按群、时间、发送人、来源类型做元数据过滤。
 5. 引入时间权重和来源权重重排。
@@ -278,7 +278,7 @@ MVP 采用本地 Gateway 模式：
 实现上使用 `@larksuiteoapi/node-sdk` 的 `WSClient` 和 `EventDispatcher`：
 
 ```text
-WSClient 长连接 -> EventDispatcher im.message.receive_v1 -> GatewayIngestor -> SQLite/LanceDB RAG
+WSClient 长连接 -> EventDispatcher im.message.receive_v1 -> GatewayIngestor -> SQLite RAG
 ```
 
 Gateway 层只负责接收和归一化事件，不直接参与 RAG 答案生成，避免平台细节污染知识库和检索层。
@@ -364,11 +364,11 @@ chattercatcher web start
 
 `gateway start` 以前台进程运行，并在 `~/.chattercatcher/gateway.pid` 写入运行记录。`gateway stop` 读取该 PID 文件发送停止信号；如果 PID 已过期，会清理陈旧记录。后台服务安装仍属于 M3 的 service 能力。
 
-`restore` 默认合并导入导出文件中的 chats、messages、message_chunks 和 file_jobs，并重建 SQLite FTS。只有显式传入 `--replace` 时才会先清空当前本地知识库；恢复后如果使用 LanceDB 语义检索，需要运行 `index rebuild` 重建向量。
+`restore` 默认合并导入导出文件中的 chats、messages、message_chunks、message_chunk_embeddings 和 file_jobs，并重建 SQLite FTS。只有显式传入 `--replace` 时才会先清空当前本地知识库；恢复后如果使用语义检索，可以运行 `index rebuild` 重新生成 SQLite embedding 向量。
 
-`data delete` 删除 SQLite 知识库记录、关联 chunks、SQLite FTS 条目和文件解析任务。删除文件知识源时，只会清理位于 `storage.dataDir` 内的本地保存文件，不会删除外部源文件。删除后如果使用 LanceDB 语义检索，需要运行 `index rebuild` 清理向量侧残留。
+`data delete` 删除 SQLite 知识库记录、关联 chunks、SQLite FTS 条目、SQLite embedding 向量和文件解析任务。删除文件知识源时，只会清理位于 `storage.dataDir` 内的本地保存文件，不会删除外部源文件。
 
-`process messages` 立即运行消息索引处理。SQLite FTS 在消息入库时已经即时更新；该命令主要用于立刻把消息 chunks 写入 LanceDB 向量索引，等价于手动触发原本可由定时任务承担的处理动作。Web UI 首页的“立即处理”按钮调用同一条 API。
+`process messages` 立即运行消息索引处理。SQLite FTS 在消息入库时已经即时更新；该命令主要用于立刻把消息 chunks 写入 SQLite embedding 向量索引，等价于手动触发原本可由定时任务承担的处理动作。Web UI 首页的“立即处理”按钮调用同一条 API。
 
 ## 测试策略
 

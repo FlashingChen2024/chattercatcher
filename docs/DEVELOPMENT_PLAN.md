@@ -36,7 +36,7 @@
 
 `doctor` 需要覆盖两类检查：
 
-- 默认离线检查：配置目录、飞书配置完整性、SQLite、LanceDB、RAG 策略。
+- 默认离线检查：配置目录、飞书配置完整性、SQLite、SQLite embedding 向量索引、RAG 策略。
 - 可选在线检查：`chattercatcher doctor --online` 调用 OpenAI-compatible chat 和 embedding 接口，确认模型连通性。
 
 ### 验收标准
