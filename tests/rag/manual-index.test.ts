@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultConfig, createDefaultSecrets } from "../../src/config/schema.js";
 import { openDatabase } from "../../src/db/database.js";
 import { MessageRepository } from "../../src/messages/repository.js";
@@ -26,6 +26,7 @@ describe("manual message indexing", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     await fs.rm(testDir, { recursive: true, force: true });
   });
 
@@ -126,11 +127,18 @@ describe("manual message indexing", () => {
   it("真实 embedding 创建后请求失败时保持当前错误行为", async () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;
-    config.embedding.baseUrl = "http://127.0.0.1:1/v1";
+    config.embedding.baseUrl = "https://embeddings.example.com/v1";
     config.embedding.model = "test-embedding-model";
     const secrets = createDefaultSecrets();
     secrets.embedding.apiKey = "test-api-key";
     const database = openDatabase(config);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("embedding unavailable");
+      }),
+    );
 
     try {
       const messages = new MessageRepository(database);
@@ -152,7 +160,7 @@ describe("manual message indexing", () => {
           secrets,
           database,
         }),
-      ).rejects.toThrow(/fetch failed|ECONNREFUSED|bad port/i);
+      ).rejects.toThrow("embedding unavailable");
     } finally {
       database.close();
     }
