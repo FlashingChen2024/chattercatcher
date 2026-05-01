@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultConfig, createDefaultSecrets } from "../../src/config/schema.js";
 import { openDatabase } from "../../src/db/database.js";
 import { MessageRepository } from "../../src/messages/repository.js";
@@ -138,27 +138,39 @@ describe("createHybridRetriever", () => {
         database,
         messages,
       });
-      const embeddingSpy = fakeEmbedding.embed.bind(fakeEmbedding);
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) => {
+      const fetchSpy = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const bodyText =
+          typeof init?.body === "string"
+            ? init.body
+            : init?.body instanceof Uint8Array
+              ? new TextDecoder().decode(init.body)
+              : null;
+        expect(bodyText).not.toBeNull();
+        const payload = JSON.parse(bodyText! as string) as { input: string[]; model: string };
+        expect(payload.model).toBe(config.embedding.model);
+        expect(payload.input).toEqual(["活动什么时候"]);
+
         return new Response(
           JSON.stringify({
-            data: [{ embedding: await embeddingSpy("活动什么时候") }],
+            data: payload.input.map((text) => ({ embedding: text ? [1, 0] : [0, 1] })),
           }),
           {
             status: 200,
             headers: { "content-type": "application/json" },
           },
         );
-      }) as typeof fetch;
+      });
+      vi.stubGlobal("fetch", fetchSpy);
 
       try {
         const results = await retriever.retrieve("活动什么时候");
+        expect(fetchSpy).toHaveBeenCalledOnce();
         expect(results[0]?.text).toContain("端午活动改到 2026/6/30");
         expect(results[0]?.source).toMatchObject({ label: "家庭群", sender: "老妈" });
+        expect(() => close()).not.toThrow();
+        expect(() => close()).not.toThrow();
       } finally {
-        close();
-        globalThis.fetch = originalFetch;
+        vi.unstubAllGlobals();
       }
     } finally {
       database.close();
