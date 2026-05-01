@@ -10,6 +10,7 @@ export const appConfigSchema = z.object({
   feishu: z.object({
     domain: z.enum(["feishu", "lark"]).default("feishu"),
     appId: z.string().default(""),
+    botOpenId: z.string().default(""),
     groupPolicy: z.enum(["open", "allowlist", "disabled"]).default("open"),
     requireMention: z.boolean().default(true),
   }),

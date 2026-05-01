@@ -50,7 +50,7 @@ describe("getFeishuQuestionDecision", () => {
     expect(decision.shouldAnswer).toBe(false);
   });
 
-  it("提取 @ 后的问题文本", () => {
+  it("没有配置机器人 open_id 时不响应任意 @", () => {
     const config = createDefaultConfig();
     const decision = getFeishuQuestionDecision(
       {
@@ -59,8 +59,50 @@ describe("getFeishuQuestionDecision", () => {
             message_id: "om_1",
             chat_id: "oc_family",
             message_type: "text",
+            content: JSON.stringify({ text: "@_user_1 test" }),
+            mentions: [{ name: "川哥", key: "@_user_1", id: { open_id: "ou_chuan" } }],
+          },
+        },
+      },
+      config,
+    );
+
+    expect(decision.shouldAnswer).toBe(false);
+  });
+
+  it("@ 其他人时不回答", () => {
+    const config = createDefaultConfig();
+    config.feishu.botOpenId = "ou_bot";
+    const decision = getFeishuQuestionDecision(
+      {
+        event: {
+          message: {
+            message_id: "om_1",
+            chat_id: "oc_family",
+            message_type: "text",
+            content: JSON.stringify({ text: "@_user_1 test" }),
+            mentions: [{ name: "川哥", key: "@_user_1", id: { open_id: "ou_chuan" } }],
+          },
+        },
+      },
+      config,
+    );
+
+    expect(decision.shouldAnswer).toBe(false);
+  });
+
+  it("提取 @ 后的问题文本", () => {
+    const config = createDefaultConfig();
+    config.feishu.botOpenId = "ou_bot";
+    const decision = getFeishuQuestionDecision(
+      {
+        event: {
+          message: {
+            message_id: "om_1",
+            chat_id: "oc_family",
+            message_type: "text",
             content: JSON.stringify({ text: "@_user_1 端午活动什么时候？" }),
-            mentions: [{ name: "小陈", key: "@_user_1" }],
+            mentions: [{ name: "小陈", key: "@_user_1", id: { open_id: "ou_bot" } }],
           },
         },
       },
@@ -87,6 +129,7 @@ describe("FeishuQuestionHandler", () => {
   it("通过 RAG 生成答案并发送到原群", async () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;
+    config.feishu.botOpenId = "ou_bot";
     const secrets = createDefaultSecrets();
     const database = openDatabase(config);
     const sent: Array<{ chatId: string; text: string }> = [];
@@ -138,7 +181,7 @@ describe("FeishuQuestionHandler", () => {
             chat_id: "oc_family",
             message_type: "text",
             content: JSON.stringify({ text: "@_user_1 端午活动什么时候？" }),
-            mentions: [{ name: "小陈", key: "@_user_1" }],
+            mentions: [{ name: "小陈", key: "@_user_1", id: { open_id: "ou_bot" } }],
           },
         },
       });
@@ -162,6 +205,7 @@ describe("FeishuQuestionHandler", () => {
   it("回答生成失败时向群里说明原因", async () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;
+    config.feishu.botOpenId = "ou_bot";
     const secrets = createDefaultSecrets();
     const database = openDatabase(config);
     const sent: Array<{ chatId: string; text: string }> = [];
@@ -201,7 +245,7 @@ describe("FeishuQuestionHandler", () => {
             chat_id: "oc_family",
             message_type: "text",
             content: JSON.stringify({ text: "@_user_1 端午活动什么时候？" }),
-            mentions: [{ name: "小陈", key: "@_user_1" }],
+            mentions: [{ name: "小陈", key: "@_user_1", id: { open_id: "ou_bot" } }],
           },
         },
       });
@@ -216,6 +260,7 @@ describe("FeishuQuestionHandler", () => {
   it("即时反馈失败不影响后续回答", async () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;
+    config.feishu.botOpenId = "ou_bot";
     const secrets = createDefaultSecrets();
     const database = openDatabase(config);
     const sent: Array<{ chatId: string; text: string }> = [];
@@ -261,7 +306,7 @@ describe("FeishuQuestionHandler", () => {
             chat_id: "oc_family",
             message_type: "text",
             content: JSON.stringify({ text: "@_user_1 端午活动什么时候？" }),
-            mentions: [{ name: "小陈", key: "@_user_1" }],
+            mentions: [{ name: "小陈", key: "@_user_1", id: { open_id: "ou_bot" } }],
           },
         },
       });

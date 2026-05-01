@@ -54,7 +54,7 @@ export function createFeishuEventDispatcher(options: {
     "im.message.receive_v1": async (data: FeishuReceiveMessageEvent["event"]) => {
       const payload = { event: data };
 
-      if (options.questionHandler && isFeishuMessageAddressedToBot(payload)) {
+      if (options.questionHandler && isFeishuMessageAddressedToBot(payload, options.config)) {
         const platformMessageId = data?.message?.message_id;
         if (platformMessageId && answeredMessageIds.has(platformMessageId)) {
           console.log("飞书提问重复投递：已跳过回答。");

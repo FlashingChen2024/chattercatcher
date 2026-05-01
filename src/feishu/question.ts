@@ -51,13 +51,29 @@ function stripMentions(text: string, mentions: NonNullable<NonNullable<FeishuRec
   return result.replace(/@/g, " ").replace(/\s+/g, " ").trim();
 }
 
-export function isFeishuMessageAddressedToBot(payload: FeishuReceiveMessageEvent): boolean {
+type FeishuMessage = NonNullable<NonNullable<FeishuReceiveMessageEvent["event"]>["message"]>;
+type FeishuMention = NonNullable<FeishuMessage["mentions"]>[number];
+
+function isMentionForBot(mention: FeishuMention, config: AppConfig): boolean {
+  if (!config.feishu.botOpenId) {
+    return false;
+  }
+
+  return mention.id?.open_id === config.feishu.botOpenId;
+}
+
+function getBotMentions(payload: FeishuReceiveMessageEvent, config: AppConfig) {
+  const message = payload.event?.message;
+  return (message?.mentions ?? []).filter((mention) => isMentionForBot(mention, config));
+}
+
+export function isFeishuMessageAddressedToBot(payload: FeishuReceiveMessageEvent, config: AppConfig): boolean {
   const message = payload.event?.message;
   if (!message || message.message_type !== "text") {
     return false;
   }
 
-  return (message.mentions ?? []).length > 0;
+  return getBotMentions(payload, config).length > 0;
 }
 
 export function getFeishuQuestionDecision(
@@ -72,9 +88,9 @@ export function getFeishuQuestionDecision(
     };
   }
 
-  const mentions = message.mentions ?? [];
+  const mentions = getBotMentions(payload, config);
   const text = parseTextContent(message.content);
-  const hasMention = isFeishuMessageAddressedToBot(payload);
+  const hasMention = isFeishuMessageAddressedToBot(payload, config);
 
   if (config.feishu.requireMention && !hasMention) {
     return {
