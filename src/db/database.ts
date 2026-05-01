@@ -67,11 +67,12 @@ export function migrateDatabase(database: SqliteDatabase): void {
     );
 
     CREATE TABLE IF NOT EXISTS message_chunk_embeddings (
-      chunk_id TEXT PRIMARY KEY REFERENCES message_chunks(id) ON DELETE CASCADE,
+      chunk_id TEXT NOT NULL REFERENCES message_chunks(id) ON DELETE CASCADE,
       model TEXT NOT NULL,
       dimension INTEGER NOT NULL,
       embedding_json TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (chunk_id, model)
     );
 
     CREATE INDEX IF NOT EXISTS message_chunk_embeddings_model_idx
