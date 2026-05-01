@@ -406,7 +406,7 @@ export function createWebApp(config: AppConfig): FastifyInstance {
       note: "问答必须先检索证据，禁止全量上下文堆叠。",
       retrieval: {
         keyword: "SQLite FTS5",
-        vector: "LanceDB",
+        vector: "SQLite embedding",
         hybrid: true,
       },
     },

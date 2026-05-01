@@ -26,7 +26,6 @@ export * from "./rag/citations.js";
 export * from "./rag/embedding.js";
 export * from "./rag/hybrid-retriever.js";
 export * from "./rag/indexer.js";
-export * from "./rag/lancedb-store.js";
 export * from "./rag/factory.js";
 export * from "./rag/manual-index.js";
 export * from "./rag/message-retriever.js";

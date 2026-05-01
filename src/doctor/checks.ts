@@ -7,6 +7,7 @@ import { getGatewayStatus } from "../gateway/index.js";
 import { createChatModel, createEmbeddingModel } from "../llm/openai-compatible.js";
 import { MessageRepository } from "../messages/repository.js";
 import { hasEmbeddingConfig } from "../rag/factory.js";
+import { SqliteVectorStore } from "../rag/sqlite-vector-store.js";
 
 export type DoctorStatus = "pass" | "warn" | "fail";
 
@@ -45,7 +46,7 @@ export async function runDoctor(
   checks.push(checkEmbeddingConfig(config, secrets));
   checks.push(await checkSqlite(config));
   checks.push(await checkFilePipeline(config));
-  checks.push(await checkLanceDb(config));
+  checks.push(await checkSqliteVectorIndex(config));
   checks.push(checkRagPolicy());
 
   if (options.online) {
@@ -86,7 +87,7 @@ function checkLlmConfig(config: AppConfig, secrets: AppSecrets): DoctorCheck {
 
 function checkEmbeddingConfig(config: AppConfig, secrets: AppSecrets): DoctorCheck {
   if (!hasEmbeddingConfig(config, secrets)) {
-    return warn("Embedding 配置", "未配置完整；RAG 会使用 SQLite FTS，无法使用 LanceDB 语义检索。");
+    return warn("Embedding 配置", "未配置完整；RAG 会使用 SQLite FTS，无法启用 SQLite embedding 语义检索。");
   }
 
   return pass("Embedding 配置", `${config.embedding.model} @ ${config.embedding.baseUrl || config.llm.baseUrl}`);
@@ -126,17 +127,25 @@ async function checkFilePipeline(config: AppConfig): Promise<DoctorCheck> {
   }
 }
 
-async function checkLanceDb(config: AppConfig): Promise<DoctorCheck> {
-  let store: { count(): Promise<number>; close(): void } | null = null;
+async function checkSqliteVectorIndex(config: AppConfig): Promise<DoctorCheck> {
+  let database: ReturnType<typeof openDatabase> | null = null;
   try {
-    const { getLanceDbPath, LanceDbVectorStore } = await import("../rag/lancedb-store.js");
-    store = await LanceDbVectorStore.connectFromConfig(config);
-    const count = await store.count();
-    return pass("LanceDB", `${getLanceDbPath(config)}；vectors=${count}`);
+    database = openDatabase(config);
+    const defaultModel = config.embedding.model || "default";
+    const vectorStore = new SqliteVectorStore(database, { model: defaultModel });
+    const vectors = vectorStore.count();
+    const availableModels = database
+      .prepare("SELECT COUNT(DISTINCT model) AS count FROM message_chunk_embeddings")
+      .get() as { count: number };
+
+    return pass(
+      "SQLite embedding 向量索引",
+      `${getDatabasePath(config)}；vectors=${vectors}；models=${availableModels.count}${config.embedding.model ? `；active_model=${config.embedding.model}` : "；active_model=未配置"}`,
+    );
   } catch (error) {
-    return fail("LanceDB", error instanceof Error ? error.message : String(error));
+    return fail("SQLite embedding 向量索引", error instanceof Error ? error.message : String(error));
   } finally {
-    store?.close();
+    database?.close();
   }
 }
 

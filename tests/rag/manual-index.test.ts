@@ -1,11 +1,12 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultConfig, createDefaultSecrets } from "../../src/config/schema.js";
 import { openDatabase } from "../../src/db/database.js";
 import { MessageRepository } from "../../src/messages/repository.js";
 import { processMessagesNow } from "../../src/rag/manual-index.js";
+import { SqliteVectorStore } from "../../src/rag/sqlite-vector-store.js";
 
 let testDir: string;
 
@@ -15,6 +16,7 @@ describe("manual message indexing", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     await fs.rm(testDir, { recursive: true, force: true });
   });
 
@@ -50,6 +52,168 @@ describe("manual message indexing", () => {
       });
       expect(result.reason).toContain("Embedding 配置不完整");
       expect(messages.searchMessages("端午活动")).toHaveLength(1);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("manual index 会把向量写入 SQLite vector store", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    config.embedding.baseUrl = "https://embeddings.example.com/v1";
+    config.embedding.model = "test-embedding-model";
+    const secrets = createDefaultSecrets();
+    secrets.embedding.apiKey = "test-api-key";
+    const database = openDatabase(config);
+
+    try {
+      const messages = new MessageRepository(database);
+      messages.ingest({
+        platform: "dev",
+        platformChatId: "family",
+        chatName: "家庭群",
+        platformMessageId: "message-1",
+        senderId: "mom",
+        senderName: "老妈",
+        messageType: "text",
+        text: "端午活动改到 2026/6/30。",
+        sentAt: "2026-04-25T08:00:00.000Z",
+      });
+      messages.ingest({
+        platform: "dev",
+        platformChatId: "family",
+        chatName: "家庭群",
+        platformMessageId: "message-2",
+        senderId: "dad",
+        senderName: "老爸",
+        messageType: "text",
+        text: "晚饭吃面。",
+        sentAt: "2026-04-25T09:00:00.000Z",
+      });
+
+      const fakeEmbedding = {
+        async embed(text: string) {
+          return text.includes("端午") ? [1, 0] : [0, 1];
+        },
+        async embedBatch(texts: string[]) {
+          return Promise.all(texts.map((text) => this.embed(text)));
+        },
+      };
+
+      const result = await processMessagesNow({
+        config,
+        secrets,
+        database,
+        embedding: fakeEmbedding,
+      });
+      const store = new SqliteVectorStore(database, { model: config.embedding.model });
+      const countRow = database
+        .prepare("SELECT COUNT(*) AS count FROM message_chunk_embeddings WHERE model = ?")
+        .get(config.embedding.model) as { count: number };
+
+      expect(result).toMatchObject({
+        status: "completed",
+        chunks: 2,
+        vectors: 2,
+      });
+      expect(store.count()).toBe(2);
+      expect(countRow.count).toBe(2);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("真实 embedding 创建后请求失败时保持当前错误行为", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    config.embedding.baseUrl = "https://embeddings.example.com/v1";
+    config.embedding.model = "test-embedding-model";
+    const secrets = createDefaultSecrets();
+    secrets.embedding.apiKey = "test-api-key";
+    const database = openDatabase(config);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("embedding unavailable");
+      }),
+    );
+
+    try {
+      const messages = new MessageRepository(database);
+      messages.ingest({
+        platform: "dev",
+        platformChatId: "family",
+        chatName: "家庭群",
+        platformMessageId: "message-1",
+        senderId: "mom",
+        senderName: "老妈",
+        messageType: "text",
+        text: "端午活动改到 2026/6/30。",
+        sentAt: "2026-04-25T08:00:00.000Z",
+      });
+
+      await expect(
+        processMessagesNow({
+          config,
+          secrets,
+          database,
+        }),
+      ).rejects.toThrow("embedding unavailable");
+    } finally {
+      database.close();
+    }
+  });
+
+  it("重复 manual index 不会重复计数", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    config.embedding.baseUrl = "https://embeddings.example.com/v1";
+    config.embedding.model = "test-embedding-model";
+    const secrets = createDefaultSecrets();
+    secrets.embedding.apiKey = "test-api-key";
+    const database = openDatabase(config);
+
+    try {
+      const messages = new MessageRepository(database);
+      messages.ingest({
+        platform: "dev",
+        platformChatId: "family",
+        chatName: "家庭群",
+        platformMessageId: "message-1",
+        senderId: "mom",
+        senderName: "老妈",
+        messageType: "text",
+        text: "端午活动改到 2026/6/30。",
+        sentAt: "2026-04-25T08:00:00.000Z",
+      });
+
+      const fakeEmbedding = {
+        async embed(text: string) {
+          return text.includes("端午") ? [1, 0] : [0, 1];
+        },
+        async embedBatch(texts: string[]) {
+          return Promise.all(texts.map((text) => this.embed(text)));
+        },
+      };
+
+      const firstResult = await processMessagesNow({
+        config,
+        secrets,
+        database,
+        embedding: fakeEmbedding,
+      });
+      const secondResult = await processMessagesNow({
+        config,
+        secrets,
+        database,
+        embedding: fakeEmbedding,
+      });
+      const store = new SqliteVectorStore(database, { model: config.embedding.model });
+
+      expect(firstResult).toMatchObject({ status: "completed", chunks: 1, vectors: 1 });
+      expect(secondResult).toMatchObject({ status: "completed", chunks: 1, vectors: 1 });
+      expect(store.count()).toBe(1);
     } finally {
       database.close();
     }

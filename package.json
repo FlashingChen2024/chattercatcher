@@ -1,6 +1,6 @@
 {
   "name": "chattercatcher",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "本地优先的飞书/Lark 家庭群知识库机器人",
   "type": "module",
   "main": "dist/index.js",
@@ -44,7 +44,6 @@
   "license": "MIT",
   "dependencies": {
     "@inquirer/prompts": "^8.4.2",
-    "@lancedb/lancedb": "0.23.0",
     "@larksuiteoapi/node-sdk": "^1.62.0",
     "better-sqlite3": "^12.9.0",
     "commander": "^14.0.3",

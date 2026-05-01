@@ -148,6 +148,7 @@ export class FeishuQuestionHandler {
     const { retriever, close } = await createHybridRetriever({
       config: this.options.config,
       secrets: this.options.secrets,
+      database: this.options.database,
       messages: new MessageRepository(this.options.database),
       excludeMessageIds: options.excludeMessageIds,
     });

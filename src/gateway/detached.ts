@@ -1,9 +1,11 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { AppConfig, AppSecrets } from "../config/schema.js";
 import { getGatewayStatus } from "./index.js";
 import { getGatewayLogPath } from "./runtime.js";
+
+const START_FAILURE_GRACE_MS = 250;
 
 export interface GatewayForegroundSpawnCommand {
   command: string;
@@ -41,7 +43,45 @@ export function buildGatewayForegroundSpawnCommand(argv = process.argv): Gateway
   };
 }
 
-export function startDetachedGateway(input: DetachedGatewayStartInput): DetachedGatewayStartResult {
+function describeImmediateChildFailure(event: { type: "error"; error: Error } | { type: "exit"; code: number | null; signal: NodeJS.Signals | null }): string {
+  if (event.type === "error") {
+    return event.error.message;
+  }
+
+  return event.signal ? `signal=${event.signal}` : `exitCode=${event.code ?? "unknown"}`;
+}
+
+function waitForImmediateChildFailure(
+  child: ChildProcess,
+  graceMs = START_FAILURE_GRACE_MS,
+): Promise<{ type: "error"; error: Error } | { type: "exit"; code: number | null; signal: NodeJS.Signals | null } | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer: NodeJS.Timeout;
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      child.off("error", onError);
+      child.off("exit", onExit);
+    };
+    const settle = (result: { type: "error"; error: Error } | { type: "exit"; code: number | null; signal: NodeJS.Signals | null } | null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+    const onError = (error: Error) => settle({ type: "error", error });
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) => settle({ type: "exit", code, signal });
+
+    child.once("error", onError);
+    child.once("exit", onExit);
+    timer = setTimeout(() => settle(null), graceMs);
+  });
+}
+
+export async function startDetachedGateway(input: DetachedGatewayStartInput): Promise<DetachedGatewayStartResult> {
   const status = getGatewayStatus(input.config, input.secrets);
   const logFile = getGatewayLogPath();
 
@@ -83,7 +123,18 @@ export function startDetachedGateway(input: DetachedGatewayStartInput): Detached
       windowsHide: true,
     });
 
+    const immediateFailure = await waitForImmediateChildFailure(child);
     closeStdio();
+
+    if (immediateFailure) {
+      return {
+        started: false,
+        message: `飞书 Gateway 启动失败：${describeImmediateChildFailure(immediateFailure)}。请查看日志：${logFile}`,
+        pid: child.pid,
+        logFile,
+      };
+    }
+
     child.unref();
 
     return {
