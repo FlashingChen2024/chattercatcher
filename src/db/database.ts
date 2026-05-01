@@ -66,6 +66,17 @@ export function migrateDatabase(database: SqliteDatabase): void {
       tokenize = 'unicode61'
     );
 
+    CREATE TABLE IF NOT EXISTS message_chunk_embeddings (
+      chunk_id TEXT PRIMARY KEY REFERENCES message_chunks(id) ON DELETE CASCADE,
+      model TEXT NOT NULL,
+      dimension INTEGER NOT NULL,
+      embedding_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS message_chunk_embeddings_model_idx
+    ON message_chunk_embeddings(model, dimension);
+
     CREATE TABLE IF NOT EXISTS file_jobs (
       id TEXT PRIMARY KEY,
       source_path TEXT NOT NULL,
