@@ -91,7 +91,13 @@ export async function ensureFeishuBotOpenId(
   }
 
   const openId = await resolveFeishuBotOpenId(config, secrets, options);
+  const previousOpenId = config.feishu.botOpenId;
   config.feishu.botOpenId = openId;
-  await options.onSave?.();
+  try {
+    await options.onSave?.();
+  } catch (error) {
+    config.feishu.botOpenId = previousOpenId;
+    throw error;
+  }
   return openId;
 }
