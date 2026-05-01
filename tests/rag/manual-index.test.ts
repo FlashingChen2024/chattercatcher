@@ -123,6 +123,41 @@ describe("manual message indexing", () => {
     }
   });
 
+  it("真实 embedding 创建后请求失败时保持当前错误行为", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    config.embedding.baseUrl = "http://127.0.0.1:1/v1";
+    config.embedding.model = "test-embedding-model";
+    const secrets = createDefaultSecrets();
+    secrets.embedding.apiKey = "test-api-key";
+    const database = openDatabase(config);
+
+    try {
+      const messages = new MessageRepository(database);
+      messages.ingest({
+        platform: "dev",
+        platformChatId: "family",
+        chatName: "家庭群",
+        platformMessageId: "message-1",
+        senderId: "mom",
+        senderName: "老妈",
+        messageType: "text",
+        text: "端午活动改到 2026/6/30。",
+        sentAt: "2026-04-25T08:00:00.000Z",
+      });
+
+      await expect(
+        processMessagesNow({
+          config,
+          secrets,
+          database,
+        }),
+      ).rejects.toThrow(/fetch failed|ECONNREFUSED|bad port/i);
+    } finally {
+      database.close();
+    }
+  });
+
   it("重复 manual index 不会重复计数", async () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;
