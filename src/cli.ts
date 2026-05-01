@@ -340,7 +340,7 @@ async function deleteDataCommand(targetType: DeleteTargetType, targetId: string,
     if (result.skippedStoredFiles.length > 0) {
       console.log(`跳过非数据目录文件：${result.skippedStoredFiles.join("；")}`);
     }
-    console.log("SQLite FTS 已同步删除；如使用 LanceDB 语义检索，请运行 chattercatcher index rebuild。");
+    console.log("SQLite FTS 已同步删除；如使用 SQLite embedding 语义检索，请运行 chattercatcher index rebuild。");
   } finally {
     database.close();
   }
@@ -388,8 +388,8 @@ index.command("status").description("查看索引状态").action(async () => {
       vectors,
       retrieval: {
         keyword: "SQLite FTS5",
-        vector: hasEmbeddingConfig(config, secrets) ? "LanceDB 已可用于语义检索" : "LanceDB 已接入；需配置 embedding 后启用语义检索",
-        hybrid: "启用：SQLite FTS + LanceDB Vector",
+        vector: hasEmbeddingConfig(config, secrets) ? "SQLite embedding 向量索引已可用于语义检索" : "SQLite embedding 向量索引已接入；需配置 embedding 后启用语义检索",
+        hybrid: "启用：SQLite FTS + SQLite embedding 向量检索",
         rag: "强制先检索证据再回答，禁止全量上下文堆叠",
       },
     },
@@ -400,7 +400,7 @@ index.command("status").description("查看索引状态").action(async () => {
   database.close();
 });
 
-index.command("rebuild").description("重建 LanceDB 向量索引").option("--limit <number>", "最多索引的 chunk 数", "10000").action(async (options: { limit: string }) => {
+index.command("rebuild").description("重建语义向量索引").option("--limit <number>", "最多索引的 chunk 数", "10000").action(async (options: { limit: string }) => {
   const config = await loadConfig();
   const secrets = await loadSecrets();
 
@@ -640,7 +640,7 @@ program.command("restore").description("从 ChatterCatcher 导出文件恢复本
     console.log(`恢复完成：${result.inputPath}`);
     console.log(`模式：${result.mode === "replace" ? "替换" : "合并"}`);
     console.log(`包含：群聊=${result.chats}，消息=${result.messages}，chunks=${result.chunks}，文件任务=${result.fileJobs}`);
-    console.log("SQLite FTS 已重建；如使用 LanceDB 语义检索，请运行 chattercatcher index rebuild。");
+    console.log("SQLite FTS 已重建；如使用 SQLite embedding 语义检索，请运行 chattercatcher index rebuild。");
   } finally {
     database.close();
   }
