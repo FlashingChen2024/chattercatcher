@@ -29,6 +29,7 @@ import { MessageRepository } from "./messages/repository.js";
 import { createHybridRetriever, hasEmbeddingConfig } from "./rag/factory.js";
 import { indexMessageChunks } from "./rag/indexer.js";
 import { processMessagesNow } from "./rag/manual-index.js";
+import { SqliteVectorStore } from "./rag/sqlite-vector-store.js";
 import { askWithRag } from "./rag/qa-service.js";
 import { formatCitation } from "./rag/citations.js";
 import { updateChatterCatcher } from "./update/npm-updater.js";
@@ -211,10 +212,9 @@ async function startGatewayForegroundCommand(): Promise<void> {
   });
 
   const database = openDatabase(config);
-  const { LanceDbVectorStore } = hasEmbeddingConfig(config, secrets)
-    ? await import("./rag/lancedb-store.js")
-    : { LanceDbVectorStore: null };
-  const vectorStore = LanceDbVectorStore ? await LanceDbVectorStore.connectFromConfig(config) : null;
+  const vectorStore = hasEmbeddingConfig(config, secrets)
+    ? new SqliteVectorStore(database, { model: config.embedding.model })
+    : null;
   const gatewayRuntime = createFeishuGateway({
     config,
     secrets,
@@ -240,7 +240,6 @@ async function startGatewayForegroundCommand(): Promise<void> {
 
   const cleanup = () => {
     gatewayRuntime.stop();
-    vectorStore?.close();
     database.close();
     removeGatewayPidRecord();
   };
@@ -711,6 +710,7 @@ dev
     const { retriever, close } = await createHybridRetriever({
       config,
       secrets,
+      database,
       messages: new MessageRepository(database),
     });
     const evidence = await retriever.retrieve(question);
@@ -738,6 +738,7 @@ dev
     const { retriever, close } = await createHybridRetriever({
       config,
       secrets,
+      database,
       messages: new MessageRepository(database),
     });
 

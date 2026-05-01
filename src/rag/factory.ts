@@ -1,9 +1,11 @@
 import type { AppConfig, AppSecrets } from "../config/schema.js";
+import type { SqliteDatabase } from "../db/database.js";
 import type { MessageRepository } from "../messages/repository.js";
 import { createEmbeddingModel } from "../llm/openai-compatible.js";
 import { HybridRetriever } from "./hybrid-retriever.js";
 import { MessageFtsRetriever } from "./message-retriever.js";
 import type { Retriever } from "./retriever.js";
+import { SqliteVectorStore } from "./sqlite-vector-store.js";
 import { VectorRetriever } from "./vector-retriever.js";
 
 export function hasEmbeddingConfig(config: AppConfig, secrets: AppSecrets): boolean {
@@ -13,6 +15,7 @@ export function hasEmbeddingConfig(config: AppConfig, secrets: AppSecrets): bool
 export async function createHybridRetriever(input: {
   config: AppConfig;
   secrets: AppSecrets;
+  database: SqliteDatabase;
   messages: MessageRepository;
   excludeMessageIds?: string[];
 }): Promise<{ retriever: Retriever; close: () => void }> {
@@ -20,10 +23,10 @@ export async function createHybridRetriever(input: {
   const closers: Array<() => void> = [];
 
   if (hasEmbeddingConfig(input.config, input.secrets)) {
-    const { LanceDbVectorStore } = await import("./lancedb-store.js");
-    const vectorStore = await LanceDbVectorStore.connectFromConfig(input.config);
+    const vectorStore = new SqliteVectorStore(input.database, {
+      model: input.config.embedding.model,
+    });
     retrievers.push(new VectorRetriever(createEmbeddingModel(input.config, input.secrets), vectorStore));
-    closers.push(() => vectorStore.close());
   }
 
   return {
