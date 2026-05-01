@@ -64,6 +64,8 @@ describe("CLI SQLite vector runtime", () => {
       status: "SQLite embedding 向量索引已接入；需配置 embedding 后启用语义检索",
     });
     expect(output.retrieval.vector).toBe("SQLite embedding 向量索引");
-    expect(result.stdout).not.toContain("旧向量后端");
+    expect(result.stdout).not.toContain("LanceDB");
+    expect(result.stdout).not.toContain("lancedb");
+    expect(result.stdout).not.toContain("LanceDb");
   });
 });
