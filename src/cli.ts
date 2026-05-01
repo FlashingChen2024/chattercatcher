@@ -47,6 +47,10 @@ async function promptForConfiguration(config: AppConfig, secrets: AppSecrets): P
     default: config.feishu.domain,
   });
   config.feishu.appId = await input({ message: "飞书 App ID", default: config.feishu.appId });
+  config.feishu.botOpenId = await input({
+    message: "飞书机器人 Open ID（必填，用于区分 @ 机器人和 @ 其他人）",
+    default: config.feishu.botOpenId,
+  });
   secrets.feishu.appSecret = applySecretInput(
     secrets.feishu.appSecret,
     await password({ message: secrets.feishu.appSecret ? "飞书 App Secret（留空保留）" : "飞书 App Secret", mask: "*" }),
@@ -82,7 +86,7 @@ async function promptForConfiguration(config: AppConfig, secrets: AppSecrets): P
   config.web.port =
     (await number({ message: "Web UI 端口", default: config.web.port, required: true })) ?? config.web.port;
   config.feishu.requireMention = await confirm({
-    message: "群聊回答是否要求 @ChatterCatcher？",
+    message: "群聊回答是否要求 @ 机器人？",
     default: config.feishu.requireMention,
   });
 }
