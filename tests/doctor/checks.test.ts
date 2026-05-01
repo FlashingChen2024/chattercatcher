@@ -21,19 +21,23 @@ describe("doctor checks", () => {
     await fs.rm(testHome, { recursive: true, force: true });
   });
 
-  it("离线检查本地配置、SQLite、文件解析、LanceDB 和 RAG 策略", async () => {
+  it("离线检查本地配置、SQLite、文件解析、SQLite embedding 向量索引 和 RAG 策略", async () => {
     const config = createDefaultConfig();
     const secrets = createDefaultSecrets();
     const checks = await runDoctor(config, secrets);
 
     expect(checks.map((check) => check.name)).toContain("SQLite");
     expect(checks.map((check) => check.name)).toContain("文件解析");
-    expect(checks.map((check) => check.name)).toContain("LanceDB");
+    expect(checks.map((check) => check.name)).toContain("SQLite embedding 向量索引");
     expect(checks.find((check) => check.name === "RAG 策略")).toMatchObject({
       status: "pass",
     });
     expect(checks.find((check) => check.name === "飞书 Gateway")).toMatchObject({
       status: "warn",
+    });
+    expect(checks.find((check) => check.name === "Embedding 配置")).toMatchObject({
+      status: "warn",
+      message: "未配置完整；RAG 会使用 SQLite FTS，无法启用 SQLite embedding 语义检索。",
     });
   });
 
@@ -96,8 +100,8 @@ describe("doctor checks", () => {
       formatDoctorChecks([
         { name: "SQLite", status: "pass", message: "ok" },
         { name: "LLM", status: "warn", message: "missing" },
-        { name: "LanceDB", status: "fail", message: "broken" },
+        { name: "SQLite embedding 向量索引", status: "fail", message: "broken" },
       ]),
-    ).toBe("[PASS] SQLite: ok\n[WARN] LLM: missing\n[FAIL] LanceDB: broken");
+    ).toBe("[PASS] SQLite: ok\n[WARN] LLM: missing\n[FAIL] SQLite embedding 向量索引: broken");
   });
 });
