@@ -27,7 +27,6 @@ import { createChatModel, createEmbeddingModel } from "./llm/openai-compatible.j
 import { followLogFile, getLogsDirectory, normalizeLineCount, readLatestLogTail } from "./logs/reader.js";
 import { MessageRepository } from "./messages/repository.js";
 import { createHybridRetriever, hasEmbeddingConfig } from "./rag/factory.js";
-import { indexMessageChunks } from "./rag/indexer.js";
 import { processMessagesNow } from "./rag/manual-index.js";
 import { SqliteVectorStore } from "./rag/sqlite-vector-store.js";
 import { askWithRag } from "./rag/qa-service.js";
@@ -374,29 +373,38 @@ index.command("status").description("查看索引状态").action(async () => {
   const config = await loadConfig();
   const secrets = await loadSecrets();
   const database = openDatabase(config);
-  const messages = new MessageRepository(database);
-  const { getLanceDbPath, LanceDbVectorStore } = await import("./rag/lancedb-store.js");
-  const vectorStore = await LanceDbVectorStore.connectFromConfig(config);
-  const vectors = await vectorStore.count();
-  console.log(JSON.stringify(
-    {
-      database: getDatabasePath(config),
-      vectorDatabase: getLanceDbPath(config),
-      chats: messages.getChatCount(),
-      messages: messages.getMessageCount(),
-      vectors,
-      retrieval: {
-        keyword: "SQLite FTS5",
-        vector: hasEmbeddingConfig(config, secrets) ? "SQLite embedding 向量索引已可用于语义检索" : "SQLite embedding 向量索引已接入；需配置 embedding 后启用语义检索",
-        hybrid: "启用：SQLite FTS + SQLite embedding 向量检索",
-        rag: "强制先检索证据再回答，禁止全量上下文堆叠",
+
+  try {
+    const messages = new MessageRepository(database);
+    const vectorStore = new SqliteVectorStore(database, { model: config.embedding.model });
+    const vectors = vectorStore.count();
+    console.log(JSON.stringify(
+      {
+        database: getDatabasePath(config),
+        chats: messages.getChatCount(),
+        messages: messages.getMessageCount(),
+        embeddings: {
+          backend: "SQLite embedding 向量索引",
+          configured: hasEmbeddingConfig(config, secrets),
+          model: config.embedding.model,
+          vectors,
+          status: hasEmbeddingConfig(config, secrets)
+            ? "SQLite embedding 向量索引已可用于语义检索"
+            : "SQLite embedding 向量索引已接入；需配置 embedding 后启用语义检索",
+        },
+        retrieval: {
+          keyword: "SQLite FTS5",
+          vector: "SQLite embedding 向量索引",
+          hybrid: "启用：SQLite FTS + SQLite embedding 向量检索",
+          rag: "强制先检索证据再回答，禁止全量上下文堆叠",
+        },
       },
-    },
-    null,
-    2,
-  ));
-  vectorStore.close();
-  database.close();
+      null,
+      2,
+    ));
+  } finally {
+    database.close();
+  }
 });
 
 index.command("rebuild").description("重建语义向量索引").option("--limit <number>", "最多索引的 chunk 数", "10000").action(async (options: { limit: string }) => {
@@ -404,24 +412,28 @@ index.command("rebuild").description("重建语义向量索引").option("--limit
   const secrets = await loadSecrets();
 
   if (!hasEmbeddingConfig(config, secrets)) {
-    console.log("Embedding 配置不完整，无法重建向量索引。请运行 chattercatcher setup 或 chattercatcher settings。");
+    console.log("Embedding 配置不完整，无法重建 SQLite embedding 向量索引。请运行 chattercatcher setup 或 chattercatcher settings。");
     return;
   }
 
   const database = openDatabase(config);
-  const { LanceDbVectorStore } = await import("./rag/lancedb-store.js");
-  const vectorStore = await LanceDbVectorStore.connectFromConfig(config);
+  const limit = Number(options.limit);
 
   try {
-    const stats = await indexMessageChunks({
-      messages: new MessageRepository(database),
-      embedding: createEmbeddingModel(config, secrets),
-      store: vectorStore,
-      limit: Number(options.limit),
+    const result = await processMessagesNow({
+      config,
+      secrets,
+      database,
+      limit: Number.isFinite(limit) ? limit : 10000,
     });
-    console.log(`向量索引完成：chunks=${stats.chunks}, vectors=${stats.vectors}`);
+
+    if (result.status === "skipped") {
+      console.log(`处理跳过：${result.reason}`);
+      return;
+    }
+
+    console.log(`SQLite embedding 向量索引完成：chunks=${result.chunks}, vectors=${result.vectors}`);
   } finally {
-    vectorStore.close();
     database.close();
   }
 });

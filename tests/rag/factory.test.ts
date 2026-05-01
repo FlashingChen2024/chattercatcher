@@ -5,19 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultConfig, createDefaultSecrets } from "../../src/config/schema.js";
 import { openDatabase } from "../../src/db/database.js";
 import { MessageRepository } from "../../src/messages/repository.js";
-import type { EmbeddingModel } from "../../src/rag/embedding.js";
 import { createHybridRetriever, hasEmbeddingConfig } from "../../src/rag/factory.js";
 
 let testDir: string;
-
-const fakeEmbedding: EmbeddingModel = {
-  async embed(text) {
-    return text.includes("活动") ? [1, 0] : [0, 1];
-  },
-  async embedBatch(texts) {
-    return Promise.all(texts.map((text) => this.embed(text)));
-  },
-};
 
 describe("createHybridRetriever", () => {
   beforeEach(async () => {
@@ -25,6 +15,7 @@ describe("createHybridRetriever", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     await fs.rm(testDir, { recursive: true, force: true });
   });
 
@@ -162,16 +153,12 @@ describe("createHybridRetriever", () => {
       });
       vi.stubGlobal("fetch", fetchSpy);
 
-      try {
-        const results = await retriever.retrieve("活动什么时候");
-        expect(fetchSpy).toHaveBeenCalledOnce();
-        expect(results[0]?.text).toContain("端午活动改到 2026/6/30");
-        expect(results[0]?.source).toMatchObject({ label: "家庭群", sender: "老妈" });
-        expect(() => close()).not.toThrow();
-        expect(() => close()).not.toThrow();
-      } finally {
-        vi.unstubAllGlobals();
-      }
+      const results = await retriever.retrieve("活动什么时候");
+      expect(fetchSpy).toHaveBeenCalledOnce();
+      expect(results[0]?.text).toContain("端午活动改到 2026/6/30");
+      expect(results[0]?.source).toMatchObject({ label: "家庭群", sender: "老妈" });
+      expect(() => close()).not.toThrow();
+      expect(() => close()).not.toThrow();
     } finally {
       database.close();
     }

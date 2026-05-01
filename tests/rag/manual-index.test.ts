@@ -5,20 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultConfig, createDefaultSecrets } from "../../src/config/schema.js";
 import { openDatabase } from "../../src/db/database.js";
 import { MessageRepository } from "../../src/messages/repository.js";
-import type { EmbeddingModel } from "../../src/rag/embedding.js";
 import { processMessagesNow } from "../../src/rag/manual-index.js";
 import { SqliteVectorStore } from "../../src/rag/sqlite-vector-store.js";
 
 let testDir: string;
-
-const fakeEmbedding: EmbeddingModel = {
-  async embed(text) {
-    return text.includes("端午") ? [1, 0] : [0, 1];
-  },
-  async embedBatch(texts) {
-    return Promise.all(texts.map((text) => this.embed(text)));
-  },
-};
 
 describe("manual message indexing", () => {
   beforeEach(async () => {
@@ -100,6 +90,15 @@ describe("manual message indexing", () => {
         text: "晚饭吃面。",
         sentAt: "2026-04-25T09:00:00.000Z",
       });
+
+      const fakeEmbedding = {
+        async embed(text: string) {
+          return text.includes("端午") ? [1, 0] : [0, 1];
+        },
+        async embedBatch(texts: string[]) {
+          return Promise.all(texts.map((text) => this.embed(text)));
+        },
+      };
 
       const result = await processMessagesNow({
         config,
@@ -188,6 +187,15 @@ describe("manual message indexing", () => {
         text: "端午活动改到 2026/6/30。",
         sentAt: "2026-04-25T08:00:00.000Z",
       });
+
+      const fakeEmbedding = {
+        async embed(text: string) {
+          return text.includes("端午") ? [1, 0] : [0, 1];
+        },
+        async embedBatch(texts: string[]) {
+          return Promise.all(texts.map((text) => this.embed(text)));
+        },
+      };
 
       const firstResult = await processMessagesNow({
         config,
