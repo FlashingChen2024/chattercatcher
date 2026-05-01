@@ -31,6 +31,25 @@ describe("getFeishuQuestionDecision", () => {
     expect(decision.shouldAnswer).toBe(false);
   });
 
+  it("普通文本包含产品名但没有飞书 mention 时不回答", () => {
+    const config = createDefaultConfig();
+    const decision = getFeishuQuestionDecision(
+      {
+        event: {
+          message: {
+            message_id: "om_1",
+            chat_id: "oc_family",
+            message_type: "text",
+            content: JSON.stringify({ text: "OK了 ChatterCatcher 复活了" }),
+          },
+        },
+      },
+      config,
+    );
+
+    expect(decision.shouldAnswer).toBe(false);
+  });
+
   it("提取 @ 后的问题文本", () => {
     const config = createDefaultConfig();
     const decision = getFeishuQuestionDecision(
@@ -40,8 +59,8 @@ describe("getFeishuQuestionDecision", () => {
             message_id: "om_1",
             chat_id: "oc_family",
             message_type: "text",
-            content: JSON.stringify({ text: "@ChatterCatcher 端午活动什么时候？" }),
-            mentions: [{ name: "ChatterCatcher", key: "@_user_1" }],
+            content: JSON.stringify({ text: "@_user_1 端午活动什么时候？" }),
+            mentions: [{ name: "小陈", key: "@_user_1" }],
           },
         },
       },
@@ -118,8 +137,8 @@ describe("FeishuQuestionHandler", () => {
             message_id: "om_question",
             chat_id: "oc_family",
             message_type: "text",
-            content: JSON.stringify({ text: "@ChatterCatcher 端午活动什么时候？" }),
-            mentions: [{ name: "ChatterCatcher", key: "@_user_1" }],
+            content: JSON.stringify({ text: "@_user_1 端午活动什么时候？" }),
+            mentions: [{ name: "小陈", key: "@_user_1" }],
           },
         },
       });
@@ -181,8 +200,8 @@ describe("FeishuQuestionHandler", () => {
             message_id: "om_question",
             chat_id: "oc_family",
             message_type: "text",
-            content: JSON.stringify({ text: "@ChatterCatcher 端午活动什么时候？" }),
-            mentions: [{ name: "ChatterCatcher", key: "@_user_1" }],
+            content: JSON.stringify({ text: "@_user_1 端午活动什么时候？" }),
+            mentions: [{ name: "小陈", key: "@_user_1" }],
           },
         },
       });
@@ -241,8 +260,8 @@ describe("FeishuQuestionHandler", () => {
             message_id: "om_question",
             chat_id: "oc_family",
             message_type: "text",
-            content: JSON.stringify({ text: "@ChatterCatcher 端午活动什么时候？" }),
-            mentions: [{ name: "ChatterCatcher", key: "@_user_1" }],
+            content: JSON.stringify({ text: "@_user_1 端午活动什么时候？" }),
+            mentions: [{ name: "小陈", key: "@_user_1" }],
           },
         },
       });

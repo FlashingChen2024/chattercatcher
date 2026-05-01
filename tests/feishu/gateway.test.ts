@@ -75,6 +75,56 @@ describe("createFeishuGateway", () => {
     }
   });
 
+  it("普通文本包含产品名但没有飞书 mention 时仍然入库且不回答", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    config.feishu.appId = "cli_app_id";
+    config.feishu.requireMention = true;
+    const secrets = createDefaultSecrets();
+    secrets.feishu.appSecret = "app_secret";
+    const database = openDatabase(config);
+    const handled: unknown[] = [];
+
+    try {
+      const runtime = createFeishuGateway({
+        config,
+        secrets,
+        ingestor: new GatewayIngestor(database),
+        questionHandler: {
+          async handle(payload: unknown) {
+            handled.push(payload);
+            return { shouldAnswer: false, reason: "群聊配置为必须 @ 后回答。" };
+          },
+        } as never,
+        wsClientFactory: () => ({
+          async start(params: { eventDispatcher: lark.EventDispatcher }) {
+            const handler = params.eventDispatcher.handles.get("im.message.receive_v1");
+            await handler?.({
+              sender: { sender_id: { open_id: "ou_user" } },
+              message: {
+                message_id: "om_product_text",
+                chat_id: "oc_family",
+                create_time: "1777111200000",
+                message_type: "text",
+                content: JSON.stringify({ text: "OK了 ChatterCatcher 复活了" }),
+              },
+            });
+          },
+          close() {},
+        }),
+      });
+
+      await runtime.start();
+
+      const messages = new MessageRepository(database);
+      expect(messages.getMessageCount()).toBe(1);
+      expect(messages.searchMessages("复活")[0]?.text).toContain("ChatterCatcher");
+      expect(handled).toHaveLength(1);
+    } finally {
+      database.close();
+    }
+  });
+
   it("@ 机器人提问会直接回答，不写入消息库", async () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;

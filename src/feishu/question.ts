@@ -48,7 +48,7 @@ function stripMentions(text: string, mentions: NonNullable<NonNullable<FeishuRec
     }
   }
 
-  return result.replace(/@\s*ChatterCatcher/gi, " ").replace(/@/g, " ").replace(/\s+/g, " ").trim();
+  return result.replace(/@/g, " ").replace(/\s+/g, " ").trim();
 }
 
 export function isFeishuMessageAddressedToBot(payload: FeishuReceiveMessageEvent): boolean {
@@ -57,9 +57,7 @@ export function isFeishuMessageAddressedToBot(payload: FeishuReceiveMessageEvent
     return false;
   }
 
-  const mentions = message.mentions ?? [];
-  const text = parseTextContent(message.content);
-  return mentions.length > 0 || /@?ChatterCatcher/i.test(text);
+  return (message.mentions ?? []).length > 0;
 }
 
 export function getFeishuQuestionDecision(
