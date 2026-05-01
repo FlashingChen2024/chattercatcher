@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
@@ -76,13 +77,11 @@ describe("gateway detached launcher", () => {
     config.feishu.appId = "cli_app";
     secrets.feishu.appSecret = "secret";
 
-    spawnMock.mockReturnValue({
-      pid: 12345,
-      unref: vi.fn(),
-    });
+    const unref = vi.fn();
+    spawnMock.mockReturnValue(Object.assign(new EventEmitter(), { pid: 12345, unref }));
 
     const argv = [process.argv[0], "/repo/node_modules/.bin/tsx", "src/cli.ts", "gateway", "start"];
-    const result = startDetachedGateway({ config, secrets, argv });
+    const result = await startDetachedGateway({ config, secrets, argv });
     const logFile = path.join(testHome, "logs", "gateway.log");
 
     expect(result.started).toBe(true);
@@ -99,6 +98,46 @@ describe("gateway detached launcher", () => {
       stdio: ["ignore", expect.any(Number), expect.any(Number)],
       windowsHide: true,
     });
+  });
+
+  it("startDetachedGateway 在子进程立即退出时不报告启动成功", async () => {
+    const { startDetachedGateway } = await import("../../src/gateway/detached.js");
+    const config = createDefaultConfig();
+    const secrets = createDefaultSecrets();
+    config.feishu.appId = "cli_app";
+    secrets.feishu.appSecret = "secret";
+    const unref = vi.fn();
+    const child = Object.assign(new EventEmitter(), { pid: 12345, unref });
+
+    spawnMock.mockReturnValue(child);
+    queueMicrotask(() => child.emit("exit", 1, null));
+
+    const result = await startDetachedGateway({ config, secrets });
+
+    expect(result.started).toBe(false);
+    expect(result.pid).toBe(12345);
+    expect(result.message).toContain("启动失败");
+    expect(result.message).toContain("exitCode=1");
+    expect(unref).not.toHaveBeenCalled();
+  });
+
+  it("startDetachedGateway 在子进程立即报错时不报告启动成功", async () => {
+    const { startDetachedGateway } = await import("../../src/gateway/detached.js");
+    const config = createDefaultConfig();
+    const secrets = createDefaultSecrets();
+    config.feishu.appId = "cli_app";
+    secrets.feishu.appSecret = "secret";
+    const unref = vi.fn();
+    const child = Object.assign(new EventEmitter(), { pid: 12345, unref });
+
+    spawnMock.mockReturnValue(child);
+    queueMicrotask(() => child.emit("error", new Error("spawn failed")));
+
+    const result = await startDetachedGateway({ config, secrets });
+
+    expect(result.started).toBe(false);
+    expect(result.message).toContain("spawn failed");
+    expect(unref).not.toHaveBeenCalled();
   });
 
   it("startDetachedGateway 在已有运行中的 Web UI 记录时阻止重复启动", async () => {
@@ -124,7 +163,7 @@ describe("gateway detached launcher", () => {
       "utf8",
     );
 
-    const result = startDetachedGateway({ config, secrets });
+    const result = await startDetachedGateway({ config, secrets });
 
     expect(result.started).toBe(false);
     expect(result.message).toContain("正在运行");

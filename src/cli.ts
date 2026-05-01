@@ -272,7 +272,7 @@ async function startGatewayCommand(options: { foreground?: boolean } = {}): Prom
 
   const config = await loadConfig();
   const secrets = await loadSecrets();
-  const result = startDetachedGateway({ config, secrets });
+  const result = await startDetachedGateway({ config, secrets });
 
   console.log(result.message);
   if (result.pid) {
