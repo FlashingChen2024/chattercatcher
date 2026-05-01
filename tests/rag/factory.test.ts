@@ -129,7 +129,7 @@ describe("createHybridRetriever", () => {
         database,
         messages,
       });
-      const fetchSpy = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const fetchSpy = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
         const bodyText =
           typeof init?.body === "string"
             ? init.body
