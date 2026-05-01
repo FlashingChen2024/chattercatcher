@@ -26,6 +26,7 @@ import { getGatewayLogPath, removeGatewayPidRecord, stopGatewayProcess, writeGat
 import { createChatModel, createEmbeddingModel } from "./llm/openai-compatible.js";
 import { followLogFile, getLogsDirectory, normalizeLineCount, readLatestLogTail } from "./logs/reader.js";
 import { MessageRepository } from "./messages/repository.js";
+import { indexMessageChunks } from "./rag/indexer.js";
 import { createHybridRetriever, hasEmbeddingConfig } from "./rag/factory.js";
 import { processMessagesNow } from "./rag/manual-index.js";
 import { SqliteVectorStore } from "./rag/sqlite-vector-store.js";
