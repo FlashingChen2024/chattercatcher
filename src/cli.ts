@@ -12,6 +12,7 @@ import { getDatabasePath, openDatabase } from "./db/database.js";
 import { formatDoctorChecks, runDoctor } from "./doctor/checks.js";
 import { exportLocalData } from "./export/data-export.js";
 import { restoreLocalData } from "./export/data-restore.js";
+import { ensureFeishuBotOpenId } from "./feishu/bot-info.js";
 import { createFeishuGateway } from "./feishu/gateway.js";
 import type { FeishuReceiveMessageEvent } from "./feishu/normalize.js";
 import { FeishuQuestionHandler } from "./feishu/question.js";
@@ -47,14 +48,11 @@ async function promptForConfiguration(config: AppConfig, secrets: AppSecrets): P
     default: config.feishu.domain,
   });
   config.feishu.appId = await input({ message: "飞书 App ID", default: config.feishu.appId });
-  config.feishu.botOpenId = await input({
-    message: "飞书机器人 Open ID（必填，用于区分 @ 机器人和 @ 其他人）",
-    default: config.feishu.botOpenId,
-  });
   secrets.feishu.appSecret = applySecretInput(
     secrets.feishu.appSecret,
     await password({ message: secrets.feishu.appSecret ? "飞书 App Secret（留空保留）" : "飞书 App Secret", mask: "*" }),
   );
+  await tryEnsureFeishuBotOpenId(config, secrets);
 
   config.llm.baseUrl = await input({ message: "LLM Base URL（OpenAI-compatible）", default: config.llm.baseUrl });
   secrets.llm.apiKey = applySecretInput(
@@ -89,6 +87,19 @@ async function promptForConfiguration(config: AppConfig, secrets: AppSecrets): P
     message: "群聊回答是否要求 @ 机器人？",
     default: config.feishu.requireMention,
   });
+}
+
+async function tryEnsureFeishuBotOpenId(config: AppConfig, secrets: AppSecrets): Promise<void> {
+  if (config.feishu.botOpenId || !config.feishu.appId || !secrets.feishu.appSecret) {
+    return;
+  }
+
+  try {
+    const openId = await ensureFeishuBotOpenId(config, secrets, { onSave: () => saveConfig(config) });
+    console.log(`已自动获取飞书机器人 Open ID：${openId}`);
+  } catch (error) {
+    console.log(`暂时无法自动获取飞书机器人 Open ID：${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function printSettings(config: AppConfig, secrets: AppSecrets): void {
@@ -210,6 +221,8 @@ async function startGatewayForegroundCommand(): Promise<void> {
     return;
   }
 
+  await tryEnsureFeishuBotOpenId(config, secrets);
+
   writeGatewayPidRecord(undefined, {
     ...pidRecordBase,
     mode: "gateway",
@@ -276,6 +289,7 @@ async function startGatewayCommand(options: { foreground?: boolean } = {}): Prom
 
   const config = await loadConfig();
   const secrets = await loadSecrets();
+  await tryEnsureFeishuBotOpenId(config, secrets);
   const result = await startDetachedGateway({ config, secrets });
 
   console.log(result.message);
