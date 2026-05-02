@@ -126,5 +126,23 @@ export function migrateDatabase(database: SqliteDatabase): void {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS image_multimodal_tasks (
+      id TEXT PRIMARY KEY,
+      source_message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+      platform_message_id TEXT NOT NULL,
+      image_key TEXT NOT NULL,
+      stored_path TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      derived_message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(source_message_id, image_key)
+    );
+
+    CREATE INDEX IF NOT EXISTS image_multimodal_tasks_status_idx ON image_multimodal_tasks(status, updated_at);
   `);
 }
