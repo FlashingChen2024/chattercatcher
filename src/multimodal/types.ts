@@ -26,11 +26,13 @@ export interface EnqueueImageMultimodalTaskInput {
 export interface DescribeImageInput {
   imagePath: string;
   mimeType: string;
-  prompt: string;
+  context?: string;
 }
 
 export interface DescribeImageResult {
-  text: string;
+  summary: string;
+  isMeaningful: boolean;
+  reason?: string;
 }
 
 export interface MultimodalModel {
