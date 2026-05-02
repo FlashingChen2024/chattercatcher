@@ -1,15 +1,30 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultConfig, createDefaultSecrets } from "../../src/config/schema.js";
 import { openDatabase } from "../../src/db/database.js";
 import { FeishuQuestionHandler, getFeishuQuestionDecision } from "../../src/feishu/question.js";
 import type { MessageSender } from "../../src/feishu/sender.js";
 import { MessageRepository } from "../../src/messages/repository.js";
-import type { ChatModel } from "../../src/rag/types.js";
+import type { ChatModel, ToolChatResult } from "../../src/rag/types.js";
 
 let testDir: string;
+
+function createCompleteWithToolsMock(
+  sequence: Array<
+    ToolChatResult | ((messages: Parameters<NonNullable<ChatModel["completeWithTools"]>>[0]) => Promise<ToolChatResult>)
+  >,
+) {
+  return vi.fn(async (messages: Parameters<NonNullable<ChatModel["completeWithTools"]>>[0]) => {
+    const next = sequence.shift();
+    if (!next) {
+      throw new Error("Missing completeWithTools mock response");
+    }
+
+    return typeof next === "function" ? next(messages) : next;
+  });
+}
 
 describe("getFeishuQuestionDecision", () => {
   it("默认必须 @ 才回答", () => {
@@ -146,7 +161,18 @@ describe("FeishuQuestionHandler", () => {
         reactions.push({ messageId, emojiType });
       },
     };
+    const completeWithTools = createCompleteWithToolsMock([
+      {
+        content: "我先查一下相关消息。",
+        toolCalls: [{ id: "call-1", name: "search_messages", input: { query: "端午活动什么时候" } }],
+      },
+      {
+        content: "检索完成。",
+        toolCalls: [],
+      },
+    ]);
     const model: ChatModel = {
+      completeWithTools,
       async complete(messages) {
         expect(messages[1]?.content).toContain("检索证据");
         return "端午活动目前是 2026/6/30。[S1]";
@@ -229,6 +255,16 @@ describe("FeishuQuestionHandler", () => {
         secrets,
         database,
         model: {
+          completeWithTools: createCompleteWithToolsMock([
+            {
+              content: "我先查一下相关消息。",
+              toolCalls: [{ id: "call-1", name: "search_messages", input: { query: "端午活动什么时候" } }],
+            },
+            {
+              content: "检索完成。",
+              toolCalls: [],
+            },
+          ]),
           async complete() {
             throw new Error("模型未配置");
           },
@@ -284,6 +320,16 @@ describe("FeishuQuestionHandler", () => {
         secrets,
         database,
         model: {
+          completeWithTools: createCompleteWithToolsMock([
+            {
+              content: "我先查一下相关消息。",
+              toolCalls: [{ id: "call-1", name: "search_messages", input: { query: "端午活动什么时候" } }],
+            },
+            {
+              content: "检索完成。",
+              toolCalls: [],
+            },
+          ]),
           async complete() {
             return "端午活动目前是 2026/6/30。[S1]";
           },

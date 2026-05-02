@@ -27,11 +27,31 @@ export interface GroundedAnswer {
   citations: Citation[];
 }
 
+export interface ToolCall {
+  id: string;
+  name: string;
+  input: unknown;
+}
+
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
+  toolCallId?: string;
+  toolCalls?: ToolCall[];
+}
+
+export interface ChatTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export interface ToolChatResult {
+  content: string;
+  toolCalls: ToolCall[];
 }
 
 export interface ChatModel {
   complete(messages: ChatMessage[]): Promise<string>;
+  completeWithTools?(messages: ChatMessage[], tools: ChatTool[]): Promise<ToolChatResult>;
 }

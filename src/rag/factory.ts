@@ -7,6 +7,7 @@ import { EpisodeFtsRetriever } from "./episode-retriever.js";
 import { HybridRetriever } from "./hybrid-retriever.js";
 import { MessageFtsRetriever } from "./message-retriever.js";
 import type { Retriever } from "./retriever.js";
+import { createRagSearchTools, type RagSearchTool } from "./search-tools.js";
 import { SqliteVectorStore } from "./sqlite-vector-store.js";
 import { VectorRetriever } from "./vector-retriever.js";
 
@@ -41,5 +42,28 @@ export async function createHybridRetriever(input: {
         closer();
       }
     },
+  };
+}
+
+export async function createAgenticRagSearchTools(input: {
+  config: AppConfig;
+  secrets: AppSecrets;
+  database: SqliteDatabase;
+  messages: MessageRepository;
+  excludeMessageIds?: string[];
+}): Promise<{ tools: RagSearchTool[]; close: () => void }> {
+  const episodes = new EpisodeFtsRetriever(new EpisodeRepository(input.database));
+  const messages = new MessageFtsRetriever(input.messages, { excludeMessageIds: input.excludeMessageIds });
+  const semantic = hasEmbeddingConfig(input.config, input.secrets)
+    ? new VectorRetriever(
+        createEmbeddingModel(input.config, input.secrets),
+        new SqliteVectorStore(input.database, { model: input.config.embedding.model }),
+      )
+    : undefined;
+  const hybrid = new HybridRetriever(semantic ? [episodes, messages, semantic] : [episodes, messages]);
+
+  return {
+    tools: createRagSearchTools({ hybrid, messages, episodes, semantic }),
+    close: () => {},
   };
 }

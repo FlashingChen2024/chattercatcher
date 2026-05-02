@@ -1,6 +1,6 @@
 import type { AppConfig, AppSecrets } from "../config/schema.js";
 import type { EmbeddingModel } from "../rag/embedding.js";
-import type { ChatMessage, ChatModel } from "../rag/types.js";
+import type { ChatMessage, ChatModel, ChatTool, ToolCall, ToolChatResult } from "../rag/types.js";
 
 export interface OpenAICompatibleChatOptions {
   baseUrl: string;
@@ -9,11 +9,23 @@ export interface OpenAICompatibleChatOptions {
   temperature?: number;
 }
 
+interface OpenAICompatibleMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  tool_call_id?: string;
+  tool_calls?: Array<{
+    id: string;
+    type: "function";
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
+}
+
 interface ChatCompletionResponse {
   choices?: Array<{
-    message?: {
-      content?: string;
-    };
+    message?: OpenAICompatibleMessage;
   }>;
 }
 
@@ -25,6 +37,54 @@ interface EmbeddingResponse {
 
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
+}
+
+function toOpenAIMessage(message: ChatMessage): OpenAICompatibleMessage {
+  return {
+    role: message.role,
+    content: message.content,
+    ...(message.toolCallId ? { tool_call_id: message.toolCallId } : {}),
+    ...(message.toolCalls
+      ? {
+          tool_calls: message.toolCalls.map((toolCall) => ({
+            id: toolCall.id,
+            type: "function" as const,
+            function: {
+              name: toolCall.name,
+              arguments: JSON.stringify(toolCall.input),
+            },
+          })),
+        }
+      : {}),
+  };
+}
+
+function toOpenAITool(tool: ChatTool): {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+} {
+  return {
+    type: "function",
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.inputSchema,
+    },
+  };
+}
+
+function parseToolCalls(message?: OpenAICompatibleMessage): ToolCall[] {
+  return (
+    message?.tool_calls?.map((toolCall) => ({
+      id: toolCall.id,
+      name: toolCall.function.name,
+      input: JSON.parse(toolCall.function.arguments),
+    })) ?? []
+  );
 }
 
 export class OpenAICompatibleChatModel implements ChatModel {
@@ -43,7 +103,7 @@ export class OpenAICompatibleChatModel implements ChatModel {
       },
       body: JSON.stringify({
         model: this.options.model,
-        messages,
+        messages: messages.map(toOpenAIMessage),
         temperature: this.options.temperature ?? 0.2,
       }),
     });
@@ -60,6 +120,40 @@ export class OpenAICompatibleChatModel implements ChatModel {
     }
 
     return content;
+  }
+
+  async completeWithTools(messages: ChatMessage[], tools: ChatTool[]): Promise<ToolChatResult> {
+    if (!this.options.baseUrl || !this.options.apiKey || !this.options.model) {
+      throw new Error("LLM 配置不完整。请运行 chattercatcher setup 或 chattercatcher settings。");
+    }
+
+    const response = await fetch(`${normalizeBaseUrl(this.options.baseUrl)}/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${this.options.apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: this.options.model,
+        messages: messages.map(toOpenAIMessage),
+        tools: tools.map(toOpenAITool),
+        tool_choice: "auto",
+        temperature: this.options.temperature ?? 0.2,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`LLM 请求失败：${response.status} ${body}`);
+    }
+
+    const data = (await response.json()) as ChatCompletionResponse;
+    const message = data.choices?.[0]?.message;
+
+    return {
+      content: message?.content ?? "",
+      toolCalls: parseToolCalls(message),
+    };
   }
 }
 
