@@ -75,12 +75,32 @@ async function promptForConfiguration(config: AppConfig, secrets: AppSecrets): P
     llmApiKey: secrets.llm.apiKey,
   });
   config.embedding.model = await input({ message: "Embedding Model", default: config.embedding.model });
+  const multimodalBaseUrl = await input({
+    message: "Multimodal Base URL（OpenAI-compatible，可留空）",
+    default: config.multimodal.baseUrl,
+  });
+  const multimodalApiKey = await password({
+    message: "Multimodal API Key（可留空）",
+    mask: "*",
+  });
+  const multimodalModel = await input({
+    message: "Multimodal Model（可留空）",
+    default: config.multimodal.model,
+  });
   const dimension = await number({
     message: "Embedding 维度（不知道可先留空）",
     default: config.embedding.dimension ?? undefined,
     required: false,
   });
   config.embedding.dimension = dimension ?? null;
+  config.multimodal = {
+    baseUrl: multimodalBaseUrl,
+    model: multimodalModel,
+  };
+
+  secrets.multimodal = {
+    apiKey: multimodalApiKey || secrets.multimodal.apiKey,
+  };
 
   config.web.port =
     (await number({ message: "Web UI 端口", default: config.web.port, required: true })) ?? config.web.port;
@@ -118,6 +138,7 @@ function printSettings(config: AppConfig, secrets: AppSecrets): void {
         feishu: { appSecret: maskSecret(secrets.feishu.appSecret) },
         llm: { apiKey: maskSecret(secrets.llm.apiKey) },
         embedding: { apiKey: maskSecret(secrets.embedding.apiKey) },
+        multimodal: { apiKey: maskSecret(secrets.multimodal.apiKey) },
       },
     },
     null,
