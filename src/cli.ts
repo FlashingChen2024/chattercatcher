@@ -26,6 +26,7 @@ import { startDetachedGateway } from "./gateway/detached.js";
 import { getGatewayStatus } from "./gateway/index.js";
 import { getGatewayLogPath, removeGatewayPidRecord, stopGatewayProcess, writeGatewayPidRecord } from "./gateway/runtime.js";
 import { createChatModel, createEmbeddingModel } from "./llm/openai-compatible.js";
+import { createMultimodalModel } from "./multimodal/openai-compatible.js";
 import { followLogFile, getLogsDirectory, normalizeLineCount, readLatestLogTail } from "./logs/reader.js";
 import { MessageRepository } from "./messages/repository.js";
 import { indexMessageChunks } from "./rag/indexer.js";
@@ -278,6 +279,13 @@ async function startGatewayForegroundCommand(): Promise<void> {
       database,
       model: createChatModel(config, secrets),
     },
+    imageMultimodalProcessor:
+      config.multimodal.baseUrl && config.multimodal.model && secrets.multimodal.apiKey
+        ? {
+            database,
+            model: createMultimodalModel(config, secrets),
+          }
+        : undefined,
     questionHandler: new FeishuQuestionHandler({
       config,
       secrets,
