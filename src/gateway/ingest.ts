@@ -9,6 +9,8 @@ import { isSupportedTextFile, ingestLocalFile } from "../files/ingest.js";
 import { FileJobRepository } from "../files/jobs.js";
 import { MessageRepository } from "../messages/repository.js";
 import type { IngestMessageInput } from "../messages/types.js";
+import { ImageMultimodalTaskRepository } from "../multimodal/tasks.js";
+import type { ImageMultimodalTaskRecord } from "../multimodal/types.js";
 
 export interface GatewayIngestResult {
   accepted: boolean;
@@ -25,6 +27,7 @@ export interface GatewayAttachmentIngestResult {
     chunks: number;
     vectors: number;
   };
+  imageTask?: ImageMultimodalTaskRecord;
   skippedReason?: string;
 }
 
@@ -54,10 +57,12 @@ function extractAttachment(message: IngestMessageInput): FeishuAttachmentMetadat
 export class GatewayIngestor {
   private readonly messages: MessageRepository;
   private readonly jobs: FileJobRepository;
+  private readonly imageTasks: ImageMultimodalTaskRepository;
 
   constructor(database: SqliteDatabase) {
     this.messages = new MessageRepository(database);
     this.jobs = new FileJobRepository(database);
+    this.imageTasks = new ImageMultimodalTaskRepository(database);
   }
 
   ingestFeishuEvent(payload: FeishuReceiveMessageEvent): GatewayIngestResult {
@@ -99,6 +104,28 @@ export class GatewayIngestor {
       messageId: result.message.platformMessageId,
       attachment,
     });
+
+    if (attachment.kind === "image") {
+      const multimodalConfigured = Boolean(input.config.multimodal.baseUrl && input.config.multimodal.model);
+      const imageTask = multimodalConfigured
+        ? this.imageTasks.enqueue({
+            sourceMessageId: result.messageId,
+            platformMessageId: result.message.platformMessageId,
+            imageKey: attachment.fileKey,
+            storedPath: downloaded.storedPath,
+            mimeType: attachment.mimeType || "image/jpeg",
+          })
+        : undefined;
+
+      return {
+        ...result,
+        attachment: {
+          downloaded,
+          ...(imageTask ? { imageTask } : {}),
+          skippedReason: imageTask ? "图片已下载，等待多模态后台处理。" : "图片已下载，但多模态未配置。",
+        },
+      };
+    }
 
     if (!isSupportedTextFile(downloaded.storedPath)) {
       return {

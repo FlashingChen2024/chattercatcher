@@ -7,6 +7,7 @@ import { openDatabase } from "../../src/db/database.js";
 import { FeishuResourceDownloader } from "../../src/feishu/resource-downloader.js";
 import { GatewayIngestor } from "../../src/gateway/ingest.js";
 import { MessageRepository } from "../../src/messages/repository.js";
+import { ImageMultimodalTaskRepository } from "../../src/multimodal/tasks.js";
 import { MessageFtsRetriever } from "../../src/rag/message-retriever.js";
 
 let testDir: string;
@@ -133,6 +134,115 @@ describe("GatewayIngestor", () => {
       expect(result.attachment?.downloaded?.fileName).toBe("om_file-活动安排.md");
       expect(result.attachment?.indexedMessageId).toBeTruthy();
       expect(evidence.some((item) => item.source.type === "file" && item.text.includes("2026/6/30"))).toBe(true);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("飞书图片附件下载后会创建多模态后台任务", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    config.multimodal.baseUrl = "https://vision.test/v1";
+    config.multimodal.model = "vision";
+    const database = openDatabase(config);
+    const downloader = new FeishuResourceDownloader(
+      {
+        im: {
+          messageResource: {
+            async get() {
+              return {
+                async writeFile(filePath: string) {
+                  await fs.writeFile(filePath, Buffer.from([1, 2, 3]));
+                },
+              };
+            },
+          },
+        },
+      },
+      testDir,
+    );
+
+    try {
+      const result = await new GatewayIngestor(database).ingestFeishuEventAndDownloadAttachments({
+        config,
+        downloader,
+        payload: {
+          event: {
+            sender: { sender_id: { open_id: "ou_mom" } },
+            message: {
+              message_id: "om_image",
+              chat_id: "oc_family",
+              create_time: "1777111200000",
+              message_type: "image",
+              content: JSON.stringify({ image_key: "img_v2_xxx" }),
+            },
+          },
+        },
+      });
+
+      const tasks = new ImageMultimodalTaskRepository(database).listPending();
+
+      expect(result.accepted).toBe(true);
+      expect(result.attachment?.downloaded?.fileName).toBe("om_image-img_v2_xxx.jpg");
+      expect(result.attachment?.imageTask).toMatchObject({ imageKey: "img_v2_xxx", status: "pending" });
+      expect(result.attachment?.skippedReason).toBe("图片已下载，等待多模态后台处理。");
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0]).toMatchObject({
+        sourceMessageId: result.messageId,
+        platformMessageId: "om_image",
+        imageKey: "img_v2_xxx",
+        mimeType: "image/jpeg",
+        status: "pending",
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("未配置多模态时图片只下载不创建任务", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const database = openDatabase(config);
+    const downloader = new FeishuResourceDownloader(
+      {
+        im: {
+          messageResource: {
+            async get() {
+              return {
+                async writeFile(filePath: string) {
+                  await fs.writeFile(filePath, Buffer.from([1, 2, 3]));
+                },
+              };
+            },
+          },
+        },
+      },
+      testDir,
+    );
+
+    try {
+      const result = await new GatewayIngestor(database).ingestFeishuEventAndDownloadAttachments({
+        config,
+        downloader,
+        payload: {
+          event: {
+            sender: { sender_id: { open_id: "ou_mom" } },
+            message: {
+              message_id: "om_image",
+              chat_id: "oc_family",
+              create_time: "1777111200000",
+              message_type: "image",
+              content: JSON.stringify({ image_key: "img_v2_xxx" }),
+            },
+          },
+        },
+      });
+
+      expect(result.accepted).toBe(true);
+      expect(result.attachment?.downloaded).toBeTruthy();
+      expect(result.attachment?.imageTask).toBeUndefined();
+      expect(result.attachment?.skippedReason).toBe("图片已下载，但多模态未配置。");
+      expect(new ImageMultimodalTaskRepository(database).listPending()).toHaveLength(0);
     } finally {
       database.close();
     }
