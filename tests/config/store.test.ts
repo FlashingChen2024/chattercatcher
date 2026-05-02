@@ -2,7 +2,19 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ensureConfigFiles, loadConfig, loadSecrets, maskSecret, resetConfigFiles } from "../../src/config/store.js";
+import {
+  ensureConfigFiles,
+  loadConfig,
+  loadSecrets,
+  maskSecret,
+  resetConfigFiles,
+} from "../../src/config/store.js";
+import {
+  appConfigSchema,
+  appSecretsSchema,
+  createDefaultConfig,
+  createDefaultSecrets,
+} from "../../src/config/schema.js";
 
 let testHome: string;
 
@@ -62,5 +74,38 @@ describe("config store", () => {
     expect(maskSecret("")).toBe("");
     expect(maskSecret("short")).toBe("********");
     expect(maskSecret("sk-1234567890")).toBe("sk-1...7890");
+  });
+});
+
+describe("multimodal config", () => {
+  it("defaults multimodal config and secret to empty values", () => {
+    const config = createDefaultConfig();
+    const secrets = createDefaultSecrets();
+
+    expect(config.multimodal).toEqual({ baseUrl: "", model: "" });
+    expect(secrets.multimodal).toEqual({ apiKey: "" });
+  });
+
+  it("parses explicit multimodal config", () => {
+    const config = appConfigSchema.parse({
+      feishu: {},
+      llm: {},
+      embedding: {},
+      storage: {},
+      web: {},
+      schedules: {},
+      episodes: {},
+      multimodal: { baseUrl: "https://api.example.com/v1", model: "vision-model" },
+    });
+    const secrets = appSecretsSchema.parse({
+      feishu: {},
+      llm: {},
+      embedding: {},
+      multimodal: { apiKey: "vision-key" },
+    });
+
+    expect(config.multimodal.baseUrl).toBe("https://api.example.com/v1");
+    expect(config.multimodal.model).toBe("vision-model");
+    expect(secrets.multimodal.apiKey).toBe("vision-key");
   });
 });
