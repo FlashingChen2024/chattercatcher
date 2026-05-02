@@ -220,9 +220,13 @@ export class EpisodeRepository {
         `,
       )
       .get(input.messageId) as { startedAt: string; endedAt: string } | undefined;
+    if (!existingWindow) {
+      return undefined;
+    }
+
     const messageTime = toMillis(target.sentAt);
-    const windowStart = existingWindow ? toMillis(existingWindow.startedAt) : messageTime - input.windowMs;
-    const windowEnd = existingWindow ? Math.max(toMillis(existingWindow.endedAt), messageTime) : messageTime + input.windowMs;
+    const windowStart = toMillis(existingWindow.startedAt);
+    const windowEnd = Math.max(toMillis(existingWindow.endedAt), messageTime);
 
     const rows = this.database
       .prepare(
