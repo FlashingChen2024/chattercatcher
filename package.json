@@ -1,6 +1,6 @@
 {
   "name": "chattercatcher",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "本地优先的飞书/Lark 家庭群知识库机器人",
   "type": "module",
   "main": "dist/index.js",
@@ -28,6 +28,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "prepack": "npm run build",
     "dev": "tsx src/cli.ts",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
