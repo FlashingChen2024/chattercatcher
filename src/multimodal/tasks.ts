@@ -86,8 +86,13 @@ export class ImageMultimodalTaskRepository {
           )
           ON CONFLICT(source_message_id, image_key)
           DO UPDATE SET
+            platform_message_id = excluded.platform_message_id,
             stored_path = excluded.stored_path,
             mime_type = excluded.mime_type,
+            status = 'pending',
+            attempts = 0,
+            last_error = NULL,
+            derived_message_id = NULL,
             updated_at = excluded.updated_at
         `,
       )

@@ -134,7 +134,7 @@ export function migrateDatabase(database: SqliteDatabase): void {
       image_key TEXT NOT NULL,
       stored_path TEXT NOT NULL,
       mime_type TEXT NOT NULL,
-      status TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','running','succeeded','skipped','failed')),
       attempts INTEGER NOT NULL DEFAULT 0,
       last_error TEXT,
       derived_message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
