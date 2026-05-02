@@ -1,7 +1,13 @@
 import crypto from "node:crypto";
 import type { SqliteDatabase } from "../db/database.js";
 import { chunkText } from "./chunker.js";
-import type { ChatRecord, FileRecord, IngestMessageInput, MessageSearchResult } from "./types.js";
+import type {
+  ChatRecord,
+  CreateImageSummaryMessageInput,
+  FileRecord,
+  IngestMessageInput,
+  MessageSearchResult,
+} from "./types.js";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -103,6 +109,7 @@ export class MessageRepository {
           )
           ON CONFLICT(platform, platform_message_id)
           DO UPDATE SET
+            message_type = excluded.message_type,
             text = excluded.text,
             raw_payload_json = excluded.raw_payload_json,
             received_at = excluded.received_at
@@ -151,6 +158,64 @@ export class MessageRepository {
 
     transaction();
     return messageId;
+  }
+
+  createImageSummaryMessage(input: CreateImageSummaryMessageInput): string {
+    const source = this.database
+      .prepare(
+        `
+        SELECT
+          m.platform AS platform,
+          m.platform_message_id AS platformMessageId,
+          m.chat_id AS chatId,
+          m.sender_id AS senderId,
+          m.sender_name AS senderName,
+          m.sent_at AS sentAt,
+          c.platform_chat_id AS platformChatId,
+          c.name AS chatName
+        FROM messages m
+        JOIN chats c ON c.id = m.chat_id
+        WHERE m.id = ?
+      `,
+      )
+      .get(input.sourceMessageId) as
+      | {
+          platform: string;
+          platformMessageId: string;
+          chatId: string;
+          senderId: string;
+          senderName: string;
+          sentAt: string;
+          platformChatId: string;
+          chatName: string;
+        }
+      | undefined;
+
+    if (!source) {
+      throw new Error("原始图片消息不存在。");
+    }
+
+    const derivedPlatformMessageId = `${source.platformMessageId}:image-summary:${input.imageKey}`;
+    return this.ingest({
+      platform: source.platform,
+      platformChatId: source.platformChatId,
+      chatName: source.chatName,
+      platformMessageId: derivedPlatformMessageId,
+      senderId: source.senderId,
+      senderName: source.senderName,
+      messageType: "image_summary",
+      text: `[图片转述] ${input.summary.trim()}`,
+      sentAt: source.sentAt,
+      rawPayload: {
+        derivedFromMessageId: input.sourceMessageId,
+        sourceAttachmentKind: "image",
+        sourceResourceKey: input.imageKey,
+        multimodalModel: input.multimodalModel,
+        isMeaningful: true,
+        ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}),
+        generatedAt: input.generatedAt,
+      },
+    });
   }
 
   listRecentMessages(limit = 20): MessageSearchResult[] {
