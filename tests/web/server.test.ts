@@ -7,6 +7,7 @@ import { openDatabase } from "../../src/db/database.js";
 import { ingestLocalFile } from "../../src/files/ingest.js";
 import { FileJobRepository } from "../../src/files/jobs.js";
 import { MessageRepository } from "../../src/messages/repository.js";
+import { EpisodeRepository } from "../../src/episodes/repository.js";
 import { createWebApp } from "../../src/web/server.js";
 
 let testDir: string;
@@ -41,6 +42,12 @@ describe("web server", () => {
         sentAt: "2026-04-25T08:00:00.000Z",
       });
       await ingestLocalFile({ config, messages: repository, jobs: new FileJobRepository(database), filePath });
+      await new EpisodeRepository(database).summarizeReadyWindows({
+        now: new Date("2026-04-25T08:10:00.000Z"),
+        quietMs: 2 * 60 * 1000,
+        windowMs: 10 * 60 * 1000,
+        summarize: async () => "端午活动改到 2026/6/30，这是来自家庭群的会话记忆。",
+      });
     } finally {
       database.close();
     }
@@ -51,7 +58,7 @@ describe("web server", () => {
       expect(status.statusCode).toBe(200);
       expect(status.json()).toMatchObject({
         app: "ChatterCatcher",
-        data: { chats: 2, messages: 2, files: 1 },
+        data: { chats: 2, messages: 2, files: 1, episodes: 1 },
         rag: {
           mode: "required",
           retrieval: {
@@ -67,6 +74,16 @@ describe("web server", () => {
       const recent = await app.inject({ method: "GET", url: "/api/messages/recent?limit=1" });
       expect(recent.json().items[0]).toMatchObject({
         text: "端午活动改到 2026/6/30。",
+      });
+
+      const episodes = await app.inject({ method: "GET", url: "/api/episodes?limit=1" });
+      expect(episodes.statusCode).toBe(200);
+      expect(episodes.json().items[0]).toMatchObject({
+        chatName: "家庭群",
+        summary: "端午活动改到 2026/6/30，这是来自家庭群的会话记忆。",
+        messageCount: 1,
+        startedAt: "2026-04-25T08:00:00.000Z",
+        endedAt: "2026-04-25T08:00:00.000Z",
       });
 
       const files = await app.inject({ method: "GET", url: "/api/files" });
@@ -96,7 +113,8 @@ describe("web server", () => {
       expect(response.headers["content-type"]).toContain("text/html");
       expect(response.body).toContain("本地优先的家庭群知识库");
       expect(response.body).toContain("不堆叠全量上下文");
-      expect(response.body).toContain("文件库");
+      expect(response.body).toContain("会话记忆");
+      expect(response.body).toContain("chattercatcher process episodes");
       expect(response.body).toContain("立即处理");
       expect(response.body).toContain("setInterval");
       expect(response.body).not.toContain("id=\"refresh\"");

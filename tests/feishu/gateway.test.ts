@@ -33,6 +33,48 @@ describe("createFeishuGateway", () => {
     ).toThrow("飞书配置不完整");
   });
 
+  it("长连接鉴权异常时提示检查 App ID 和 App Secret", async () => {
+    const config = createDefaultConfig();
+    config.feishu.appId = "cli_app_id";
+    const secrets = createDefaultSecrets();
+    secrets.feishu.appSecret = "wrong_secret";
+
+    const runtime = createFeishuGateway({
+      config,
+      secrets,
+      ingestor: {} as GatewayIngestor,
+      wsClientFactory: () => ({
+        async start() {
+          throw new TypeError("Cannot read properties of undefined (reading 'PingInterval')");
+        },
+        close() {},
+      }),
+    });
+
+    await expect(runtime.start()).rejects.toThrow("飞书长连接启动失败，请检查 App ID / App Secret");
+  });
+
+  it("长连接 system busy 异常时提示检查 App ID 和 App Secret", async () => {
+    const config = createDefaultConfig();
+    config.feishu.appId = "cli_app_id";
+    const secrets = createDefaultSecrets();
+    secrets.feishu.appSecret = "wrong_secret";
+
+    const runtime = createFeishuGateway({
+      config,
+      secrets,
+      ingestor: {} as GatewayIngestor,
+      wsClientFactory: () => ({
+        async start() {
+          throw new Error("code: 1000040345, system busy");
+        },
+        close() {},
+      }),
+    });
+
+    await expect(runtime.start()).rejects.toThrow("飞书长连接启动失败，请检查 App ID / App Secret");
+  });
+
   it("长连接事件进入 GatewayIngestor 并写入消息库", async () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;

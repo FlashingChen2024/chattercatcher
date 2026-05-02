@@ -38,6 +38,26 @@ describe("config store", () => {
     expect(config.feishu.requireMention).toBe(true);
   });
 
+  it("旧配置缺少会话记忆字段时会补默认值", async () => {
+    await fs.mkdir(testHome, { recursive: true });
+    await fs.writeFile(
+      path.join(testHome, "config.json"),
+      JSON.stringify({
+        feishu: { domain: "feishu", appId: "cli_app_id", botOpenId: "", groupPolicy: "open", requireMention: true },
+        llm: { baseUrl: "", model: "" },
+        embedding: { baseUrl: "", model: "", dimension: null },
+        storage: { dataDir: path.join(testHome, "data") },
+        web: { host: "127.0.0.1", port: 3878 },
+        schedules: { indexing: "*/10 * * * *" },
+      }),
+      "utf8",
+    );
+
+    const config = await loadConfig();
+
+    expect(config.episodes).toEqual({ windowMinutes: 10, quietMinutes: 2 });
+  });
+
   it("打印密钥时会脱敏", () => {
     expect(maskSecret("")).toBe("");
     expect(maskSecret("short")).toBe("********");

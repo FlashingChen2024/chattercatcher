@@ -33,10 +33,12 @@ export const appConfigSchema = z.object({
   schedules: z.object({
     indexing: z.string().default("*/10 * * * *"),
   }),
-  episodes: z.object({
-    windowMinutes: z.number().int().positive().default(10),
-    quietMinutes: z.number().int().positive().default(2),
-  }),
+  episodes: z
+    .object({
+      windowMinutes: z.number().int().positive().default(10),
+      quietMinutes: z.number().int().positive().default(2),
+    })
+    .default({ windowMinutes: 10, quietMinutes: 2 }),
 });
 
 export const appSecretsSchema = z.object({

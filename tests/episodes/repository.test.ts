@@ -71,6 +71,56 @@ describe("EpisodeRepository", () => {
     }
   });
 
+  it("按结束时间倒序列出会话记忆并统计数量", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const database = openDatabase(config);
+    const messages = new MessageRepository(database);
+    const episodes = new EpisodeRepository(database);
+
+    try {
+      messages.ingest({
+        platform: "dev",
+        platformChatId: "family",
+        chatName: "家庭群",
+        platformMessageId: "first",
+        senderId: "mom",
+        senderName: "老妈",
+        messageType: "text",
+        text: "第一段记忆。",
+        sentAt: "2026-04-25T08:00:00.000Z",
+      });
+      await episodes.summarizeReadyWindows({
+        now: new Date("2026-04-25T08:03:00.000Z"),
+        quietMs: 2 * 60 * 1000,
+        windowMs: 10 * 60 * 1000,
+        summarize: async () => "第一段摘要。",
+      });
+      messages.ingest({
+        platform: "dev",
+        platformChatId: "family",
+        chatName: "家庭群",
+        platformMessageId: "second",
+        senderId: "dad",
+        senderName: "老爸",
+        messageType: "text",
+        text: "第二段记忆。",
+        sentAt: "2026-04-25T08:20:00.000Z",
+      });
+      await episodes.summarizeReadyWindows({
+        now: new Date("2026-04-25T08:23:00.000Z"),
+        quietMs: 2 * 60 * 1000,
+        windowMs: 10 * 60 * 1000,
+        summarize: async () => "第二段摘要。",
+      });
+
+      expect(episodes.getEpisodeCount()).toBe(2);
+      expect(episodes.listRecentEpisodes(2).map((episode) => episode.summary)).toEqual(["第二段摘要。", "第一段摘要。"]);
+    } finally {
+      database.close();
+    }
+  });
+
   it("删除聊天后不会从 FTS 返回孤儿会话记忆", async () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;

@@ -64,6 +64,17 @@ function toMillis(value: string): number {
   return Number.isFinite(time) ? time : 0;
 }
 
+export interface EpisodeListItem {
+  id: string;
+  chatId: string;
+  chatName: string;
+  summary: string;
+  messageCount: number;
+  startedAt: string;
+  endedAt: string;
+  createdAt: string;
+}
+
 export class EpisodeRepository {
   constructor(private readonly database: SqliteDatabase) {}
 
@@ -174,6 +185,33 @@ export class EpisodeRepository {
       endedAt: window.endedAt,
       messageIds: window.messages.map((message) => message.id),
     };
+  }
+
+  getEpisodeCount(): number {
+    const row = this.database.prepare("SELECT count(*) AS count FROM memory_episodes").get() as { count: number };
+    return row.count;
+  }
+
+  listRecentEpisodes(limit = 20): EpisodeListItem[] {
+    return this.database
+      .prepare(
+        `
+          SELECT
+            e.id,
+            e.chat_id AS chatId,
+            c.name AS chatName,
+            e.summary,
+            e.message_count AS messageCount,
+            e.started_at AS startedAt,
+            e.ended_at AS endedAt,
+            e.created_at AS createdAt
+          FROM memory_episodes e
+          JOIN chats c ON c.id = e.chat_id
+          ORDER BY e.ended_at DESC
+          LIMIT ?
+        `,
+      )
+      .all(limit) as EpisodeListItem[];
   }
 
   searchEpisodes(query: string, limit = 8): EpisodeSearchResult[] {

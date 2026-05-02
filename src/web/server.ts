@@ -3,6 +3,7 @@ import { loadSecrets } from "../config/store.js";
 import type { AppConfig } from "../config/schema.js";
 import { openDatabase } from "../db/database.js";
 import { FileJobRepository } from "../files/jobs.js";
+import { EpisodeRepository } from "../episodes/repository.js";
 import { getGatewayStatus } from "../gateway/index.js";
 import { MessageRepository } from "../messages/repository.js";
 import { processMessagesNow } from "../rag/manual-index.js";
@@ -131,6 +132,10 @@ function buildHtml(): string {
             <h2>最近消息</h2>
             <div id="messages" class="empty">正在读取...</div>
           </section>
+          <section>
+            <h2>会话记忆</h2>
+            <div id="episodes" class="empty">正在读取...</div>
+          </section>
         </div>
         <aside>
           <section>
@@ -157,6 +162,7 @@ function buildHtml(): string {
     <script>
       const metrics = document.querySelector("#metrics");
       const messages = document.querySelector("#messages");
+      const episodes = document.querySelector("#episodes");
       const chats = document.querySelector("#chats");
       const files = document.querySelector("#files");
       const fileJobs = document.querySelector("#file-jobs");
@@ -220,6 +226,7 @@ function buildHtml(): string {
           ["Gateway", formatGatewayValue(status.gateway), formatGatewayNote(status.gateway), gatewayClass],
           ["群聊", status.data.chats, "本地群聊数", ""],
           ["消息", status.data.messages, "已入库消息", ""],
+          ["会话记忆", status.data.episodes, "已生成摘要", ""],
           ["文件", status.data.files, "文件知识源", ""],
         ].map(([label, value, note, extra]) => \`
           <div class="metric">
@@ -247,6 +254,29 @@ function buildHtml(): string {
                     <span>\${escapeHtml(displayChatName(item.chatName, item.platform))}</span>
                   </div>
                   <div class="message-body">\${escapeHtml(item.text)}</div>
+                </article>
+              \`).join("")}
+          </div>
+        \`;
+      }
+
+      function renderEpisodes(items) {
+        if (items.length === 0) {
+          episodes.className = "empty";
+          episodes.textContent = "还没有会话记忆。默认在 10 分钟窗口静默 2 分钟后生成，也可以运行 chattercatcher process episodes 手动触发。";
+          return;
+        }
+        episodes.className = "";
+        episodes.innerHTML = \`
+          <div class="message-list">
+              \${items.map((item) => \`
+                <article class="message-item">
+                  <div class="message-meta">
+                    <span>\${escapeHtml(formatDateTime(item.startedAt))} - \${escapeHtml(formatDateTime(item.endedAt))}</span>
+                    <span>\${escapeHtml(displayChatName(item.chatName, "feishu"))}</span>
+                    <span>\${escapeHtml(item.messageCount)} 条消息</span>
+                  </div>
+                  <div class="message-body">\${escapeHtml(item.summary)}</div>
                 </article>
               \`).join("")}
           </div>
@@ -328,15 +358,17 @@ function buildHtml(): string {
       }
 
       async function load() {
-        const [status, recent, chatList, fileList, jobList] = await Promise.all([
+        const [status, recent, episodeList, chatList, fileList, jobList] = await Promise.all([
           fetch("/api/status").then((response) => response.json()),
           fetch("/api/messages/recent?limit=20").then((response) => response.json()),
+          fetch("/api/episodes?limit=10").then((response) => response.json()),
           fetch("/api/chats").then((response) => response.json()),
           fetch("/api/files").then((response) => response.json()),
           fetch("/api/file-jobs").then((response) => response.json()),
         ]);
         renderMetrics(status);
         renderMessages(recent.items);
+        renderEpisodes(episodeList.items);
         renderChats(chatList.items);
         renderFiles(fileList.items);
         renderFileJobs(jobList.items);
@@ -387,6 +419,7 @@ export function createWebApp(config: AppConfig): FastifyInstance {
   const app = Fastify({ logger: false });
   const database = openDatabase(config);
   const messages = new MessageRepository(database);
+  const episodes = new EpisodeRepository(database);
   const fileJobs = new FileJobRepository(database);
 
   app.addHook("onClose", async () => {
@@ -399,6 +432,7 @@ export function createWebApp(config: AppConfig): FastifyInstance {
     data: {
       chats: messages.getChatCount(),
       messages: messages.getMessageCount(),
+      episodes: episodes.getEpisodeCount(),
       files: messages.listFiles(1_000).length,
     },
     rag: {
@@ -436,6 +470,13 @@ export function createWebApp(config: AppConfig): FastifyInstance {
     const limit = parseLimit((request.query as { limit?: string }).limit, 20, 100);
     return {
       items: messages.listRecentMessages(limit),
+    };
+  });
+
+  app.get("/api/episodes", async (request) => {
+    const limit = parseLimit((request.query as { limit?: string }).limit, 20, 100);
+    return {
+      items: episodes.listRecentEpisodes(limit),
     };
   });
 

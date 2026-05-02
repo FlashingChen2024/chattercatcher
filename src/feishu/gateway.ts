@@ -45,6 +45,15 @@ function assertFeishuConfig(config: AppConfig, secrets: AppSecrets): void {
   }
 }
 
+function formatGatewayStartError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("PingInterval") || message.includes("system busy") || message.includes("1000040345")) {
+    return new Error(`飞书长连接启动失败，请检查 App ID / App Secret 是否正确；原始错误：${message}`);
+  }
+
+  return error instanceof Error ? error : new Error(message);
+}
+
 export function createFeishuEventDispatcher(options: {
   config: AppConfig;
   secrets: AppSecrets;
@@ -174,7 +183,11 @@ export function createFeishuGateway(options: FeishuGatewayOptions): FeishuGatewa
 
   return {
     async start() {
-      await wsClient.start({ eventDispatcher });
+      try {
+        await wsClient.start({ eventDispatcher });
+      } catch (error) {
+        throw formatGatewayStartError(error);
+      }
     },
     stop() {
       wsClient.close({ force: true });
