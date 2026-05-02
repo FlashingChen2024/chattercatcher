@@ -226,7 +226,7 @@ function buildHtml(): string {
           ["Gateway", formatGatewayValue(status.gateway), formatGatewayNote(status.gateway), gatewayClass],
           ["群聊", status.data.chats, "本地群聊数", ""],
           ["消息", status.data.messages, "已入库消息", ""],
-          ["会话记忆", status.data.episodes, "episode summary", ""],
+          ["会话记忆", status.data.episodes, "已生成摘要", ""],
           ["文件", status.data.files, "文件知识源", ""],
         ].map(([label, value, note, extra]) => \`
           <div class="metric">
