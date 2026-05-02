@@ -162,4 +162,105 @@ describe("ImageMultimodalWorker", () => {
       database.close();
     }
   });
+
+  it("忽略已被其他 worker 抢占的 pending 快照", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const database = openDatabase(config);
+    const messages = new MessageRepository(database);
+    const tasks = new ImageMultimodalTaskRepository(database);
+
+    try {
+      const sourceMessageId = messages.ingest({
+        platform: "dev",
+        platformChatId: "family",
+        chatName: "家庭群",
+        platformMessageId: "image-1",
+        senderId: "mom",
+        senderName: "老妈",
+        messageType: "image",
+        text: "[图片] img-1",
+        sentAt: "2026-05-01T10:00:00.000Z",
+      });
+      const task = tasks.enqueue({
+        sourceMessageId,
+        platformMessageId: "image-1",
+        imageKey: "img-race",
+        storedPath: "/tmp/race.jpg",
+        mimeType: "image/jpeg",
+      });
+      tasks.markRunning(task.id);
+      const staleTasks = {
+        ...tasks,
+        listPending: () => [task],
+        markRunning: tasks.markRunning.bind(tasks),
+        markSucceeded: tasks.markSucceeded.bind(tasks),
+        markSkipped: tasks.markSkipped.bind(tasks),
+        markFailed: tasks.markFailed.bind(tasks),
+      } as unknown as ImageMultimodalTaskRepository;
+      const model: MultimodalModel = {
+        async describeImage() {
+          throw new Error("不应处理已抢占任务");
+        },
+      };
+
+      const result = await new ImageMultimodalWorker({
+        config,
+        messages,
+        tasks: staleTasks,
+        model,
+        multimodalModelName: "vision",
+      }).processPending();
+
+      expect(result).toEqual({ processed: 1, succeeded: 0, skipped: 0, failed: 0 });
+      expect(messages.getMessageCount()).toBe(1);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("并发处理同一批 pending 任务时跳过已被抢占的任务", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const database = openDatabase(config);
+    const messages = new MessageRepository(database);
+    const tasks = new ImageMultimodalTaskRepository(database);
+
+    try {
+      const sourceMessageId = messages.ingest({
+        platform: "dev",
+        platformChatId: "family",
+        chatName: "家庭群",
+        platformMessageId: "image-1",
+        senderId: "mom",
+        senderName: "老妈",
+        messageType: "image",
+        text: "[图片] img-1",
+        sentAt: "2026-05-01T10:00:00.000Z",
+      });
+      tasks.enqueue({
+        sourceMessageId,
+        platformMessageId: "image-1",
+        imageKey: "img-race",
+        storedPath: "/tmp/race.jpg",
+        mimeType: "image/jpeg",
+      });
+      const model: MultimodalModel = {
+        async describeImage() {
+          return { summary: "白板写着并发处理完成。", isMeaningful: true };
+        },
+      };
+      const firstWorker = new ImageMultimodalWorker({ config, messages, tasks, model, multimodalModelName: "vision" });
+      const secondWorker = new ImageMultimodalWorker({ config, messages, tasks, model, multimodalModelName: "vision" });
+
+      const [first, second] = await Promise.all([firstWorker.processPending(), secondWorker.processPending()]);
+
+      expect(first.succeeded + second.succeeded).toBe(1);
+      expect(first.failed + second.failed).toBe(0);
+      expect(messages.searchMessages("并发")).toHaveLength(1);
+      expect(tasks.listPending()).toHaveLength(0);
+    } finally {
+      database.close();
+    }
+  });
 });

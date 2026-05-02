@@ -1,3 +1,4 @@
+import type { AppConfig, AppSecrets } from "../config/schema.js";
 import type { SqliteDatabase } from "../db/database.js";
 import {
   normalizeFeishuReceiveMessageEvent,
@@ -54,6 +55,10 @@ function extractAttachment(message: IngestMessageInput): FeishuAttachmentMetadat
   return candidate as FeishuAttachmentMetadata;
 }
 
+function isMultimodalReady(config: AppConfig, secrets: AppSecrets): boolean {
+  return Boolean(config.multimodal.baseUrl && config.multimodal.model && secrets.multimodal.apiKey);
+}
+
 export class GatewayIngestor {
   private readonly messages: MessageRepository;
   private readonly jobs: FileJobRepository;
@@ -87,7 +92,8 @@ export class GatewayIngestor {
   async ingestFeishuEventAndDownloadAttachments(input: {
     payload: FeishuReceiveMessageEvent;
     downloader: FeishuResourceDownloader;
-    config: Parameters<typeof ingestLocalFile>[0]["config"];
+    config: AppConfig;
+    secrets: AppSecrets;
     vectorIndexMessage?: (messageId: string) => Promise<{ chunks: number; vectors: number }>;
   }): Promise<GatewayIngestAndDownloadResult> {
     const result = this.ingestFeishuEvent(input.payload);
@@ -106,8 +112,7 @@ export class GatewayIngestor {
     });
 
     if (attachment.kind === "image") {
-      const multimodalConfigured = Boolean(input.config.multimodal.baseUrl && input.config.multimodal.model);
-      const imageTask = multimodalConfigured
+      const imageTask = isMultimodalReady(input.config, input.secrets)
         ? this.imageTasks.enqueue({
             sourceMessageId: result.messageId,
             platformMessageId: result.message.platformMessageId,

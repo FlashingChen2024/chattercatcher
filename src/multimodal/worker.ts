@@ -38,7 +38,16 @@ export class ImageMultimodalWorker {
   }
 
   private async processTask(task: ImageMultimodalTaskRecord, result: ImageMultimodalWorkerResult): Promise<void> {
-    const running = this.options.tasks.markRunning(task.id);
+    let running: ImageMultimodalTaskRecord;
+    try {
+      running = this.options.tasks.markRunning(task.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.startsWith("图片多模态任务状态无法更新：")) {
+        return;
+      }
+      throw error;
+    }
 
     try {
       const described = await this.options.model.describeImage({

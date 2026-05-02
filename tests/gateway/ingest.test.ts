@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDefaultConfig } from "../../src/config/schema.js";
+import { createDefaultConfig, createDefaultSecrets } from "../../src/config/schema.js";
 import { openDatabase } from "../../src/db/database.js";
 import { FeishuResourceDownloader } from "../../src/feishu/resource-downloader.js";
 import { GatewayIngestor } from "../../src/gateway/ingest.js";
@@ -112,6 +112,7 @@ describe("GatewayIngestor", () => {
     try {
       const result = await new GatewayIngestor(database).ingestFeishuEventAndDownloadAttachments({
         config,
+        secrets: createDefaultSecrets(),
         downloader,
         payload: {
           event: {
@@ -141,6 +142,8 @@ describe("GatewayIngestor", () => {
 
   it("飞书图片附件下载后会创建多模态后台任务", async () => {
     const config = createDefaultConfig();
+    const secrets = createDefaultSecrets();
+    secrets.multimodal.apiKey = "vision-key";
     config.storage.dataDir = testDir;
     config.multimodal.baseUrl = "https://vision.test/v1";
     config.multimodal.model = "vision";
@@ -165,6 +168,7 @@ describe("GatewayIngestor", () => {
     try {
       const result = await new GatewayIngestor(database).ingestFeishuEventAndDownloadAttachments({
         config,
+        secrets,
         downloader,
         payload: {
           event: {
@@ -199,6 +203,58 @@ describe("GatewayIngestor", () => {
     }
   });
 
+  it("多模态缺少 apiKey 时图片只下载不创建任务", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    config.multimodal.baseUrl = "https://vision.test/v1";
+    config.multimodal.model = "vision";
+    const database = openDatabase(config);
+    const downloader = new FeishuResourceDownloader(
+      {
+        im: {
+          messageResource: {
+            async get() {
+              return {
+                async writeFile(filePath: string) {
+                  await fs.writeFile(filePath, Buffer.from([1, 2, 3]));
+                },
+              };
+            },
+          },
+        },
+      },
+      testDir,
+    );
+
+    try {
+      const result = await new GatewayIngestor(database).ingestFeishuEventAndDownloadAttachments({
+        config,
+        secrets: createDefaultSecrets(),
+        downloader,
+        payload: {
+          event: {
+            sender: { sender_id: { open_id: "ou_mom" } },
+            message: {
+              message_id: "om_partial_image",
+              chat_id: "oc_family",
+              create_time: "1777111200000",
+              message_type: "image",
+              content: JSON.stringify({ image_key: "img_v2_partial" }),
+            },
+          },
+        },
+      });
+
+      expect(result.accepted).toBe(true);
+      expect(result.attachment?.downloaded).toBeTruthy();
+      expect(result.attachment?.imageTask).toBeUndefined();
+      expect(result.attachment?.skippedReason).toBe("图片已下载，但多模态未配置。");
+      expect(new ImageMultimodalTaskRepository(database).listPending()).toHaveLength(0);
+    } finally {
+      database.close();
+    }
+  });
+
   it("未配置多模态时图片只下载不创建任务", async () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;
@@ -223,6 +279,7 @@ describe("GatewayIngestor", () => {
     try {
       const result = await new GatewayIngestor(database).ingestFeishuEventAndDownloadAttachments({
         config,
+        secrets: createDefaultSecrets(),
         downloader,
         payload: {
           event: {

@@ -29,6 +29,7 @@ describe("Feishu gateway image multimodal processing", () => {
     config.multimodal.baseUrl = "https://vision.test/v1";
     config.multimodal.model = "vision";
     const secrets = createDefaultSecrets();
+    secrets.multimodal.apiKey = "vision-key";
     const database = openDatabase(config);
     const downloader = new FeishuResourceDownloader(
       {
@@ -55,6 +56,7 @@ describe("Feishu gateway image multimodal processing", () => {
     try {
       const result = await new GatewayIngestor(database).ingestFeishuEventAndDownloadAttachments({
         config,
+        secrets,
         downloader,
         payload: {
           event: {

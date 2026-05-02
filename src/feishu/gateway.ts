@@ -98,6 +98,7 @@ export function createFeishuEventDispatcher(options: {
             payload,
             downloader: options.resourceDownloader,
             config: options.config,
+            secrets: options.secrets,
             vectorIndexMessage: options.attachmentVectorIndexer,
           })
         : options.ingestor.ingestFeishuEvent(payload);
