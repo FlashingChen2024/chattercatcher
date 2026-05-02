@@ -187,6 +187,82 @@ export class EpisodeRepository {
     };
   }
 
+  async refreshWindowForMessage(input: {
+    messageId: string;
+    windowMs: number;
+    summarize: (window: EpisodeWindow) => Promise<string>;
+  }): Promise<EpisodeSummaryRecord | undefined> {
+    const target = this.database
+      .prepare(
+        `
+          SELECT chat_id AS chatId, sent_at AS sentAt
+          FROM messages
+          WHERE id = ?
+        `,
+      )
+      .get(input.messageId) as { chatId: string; sentAt: string } | undefined;
+
+    if (!target) {
+      return undefined;
+    }
+
+    const existingWindow = this.database
+      .prepare(
+        `
+          SELECT e.started_at AS startedAt, e.ended_at AS endedAt
+          FROM messages target
+          JOIN messages source
+            ON source.id = json_extract(target.raw_payload_json, '$.derivedFromMessageId')
+          JOIN memory_episode_messages mem ON mem.message_id = source.id
+          JOIN memory_episodes e ON e.id = mem.episode_id
+          WHERE target.id = ?
+          LIMIT 1
+        `,
+      )
+      .get(input.messageId) as { startedAt: string; endedAt: string } | undefined;
+    const messageTime = toMillis(target.sentAt);
+    const windowStart = existingWindow ? toMillis(existingWindow.startedAt) : messageTime - input.windowMs;
+    const windowEnd = existingWindow ? Math.max(toMillis(existingWindow.endedAt), messageTime) : messageTime + input.windowMs;
+
+    const rows = this.database
+      .prepare(
+        `
+          SELECT
+            m.id,
+            m.chat_id AS chatId,
+            c.name AS chatName,
+            m.sender_name AS senderName,
+            m.text,
+            m.sent_at AS sentAt
+          FROM messages m
+          JOIN chats c ON c.id = m.chat_id
+          WHERE m.chat_id = ?
+          ORDER BY m.sent_at ASC
+        `,
+      )
+      .all(target.chatId) as EpisodeMessage[];
+
+    const windowMessages = rows.filter((message) => {
+      const time = toMillis(message.sentAt);
+      return time >= windowStart && time <= windowEnd;
+    });
+    const first = windowMessages[0];
+    const last = windowMessages.at(-1);
+    if (!first || !last) {
+      return undefined;
+    }
+
+    const window: EpisodeWindow = {
+      chatId: first.chatId,
+      chatName: first.chatName,
+      startedAt: first.sentAt,
+      endedAt: last.sentAt,
+      messages: windowMessages,
+    };
+    const summary = await input.summarize(window);
+    return this.insertEpisode(window, summary);
+  }
+
   getEpisodeCount(): number {
     const row = this.database.prepare("SELECT count(*) AS count FROM memory_episodes").get() as { count: number };
     return row.count;
