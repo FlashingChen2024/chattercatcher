@@ -2,8 +2,8 @@ import type { AppConfig, AppSecrets } from "../config/schema.js";
 import type { SqliteDatabase } from "../db/database.js";
 import { MessageRepository } from "../messages/repository.js";
 import { formatCitations } from "../rag/citations.js";
-import { createHybridRetriever } from "../rag/factory.js";
-import { askWithRag } from "../rag/qa-service.js";
+import { askWithAgenticRag } from "../rag/agentic-qa-service.js";
+import { createAgenticRagSearchTools } from "../rag/factory.js";
 import type { ChatModel } from "../rag/types.js";
 import type { MessageSender } from "./sender.js";
 import type { FeishuReceiveMessageEvent } from "./normalize.js";
@@ -159,7 +159,7 @@ export class FeishuQuestionHandler {
     const questionMessageId = payload.event?.message?.message_id;
     await this.acknowledgeQuestion(decision.chatId, questionMessageId);
 
-    const { retriever, close } = await createHybridRetriever({
+    const { tools, close } = await createAgenticRagSearchTools({
       config: this.options.config,
       secrets: this.options.secrets,
       database: this.options.database,
@@ -169,9 +169,9 @@ export class FeishuQuestionHandler {
 
     try {
       try {
-        const result = await askWithRag({
+        const result = await askWithAgenticRag({
           question: decision.question,
-          retriever,
+          tools,
           model: this.options.model,
         });
         const citations = formatCitations(result.citations);
