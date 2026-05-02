@@ -1,6 +1,9 @@
 import * as lark from "@larksuiteoapi/node-sdk";
 import type { AppConfig, AppSecrets } from "../config/schema.js";
+import { processEpisodesNow } from "../episodes/manual-process.js";
 import type { GatewayIngestAndDownloadResult, GatewayIngestor } from "../gateway/ingest.js";
+import type { ChatModel } from "../rag/types.js";
+import type { SqliteDatabase } from "../db/database.js";
 import type { FeishuReceiveMessageEvent } from "./normalize.js";
 import { getFeishuQuestionDecision, isFeishuMessageAddressedToBot } from "./question.js";
 import type { FeishuQuestionHandler } from "./question.js";
@@ -24,6 +27,7 @@ export interface FeishuGatewayOptions {
   questionHandler?: FeishuQuestionHandler;
   resourceDownloader?: FeishuResourceDownloader;
   attachmentVectorIndexer?: (messageId: string) => Promise<{ chunks: number; vectors: number }>;
+  episodeProcessor?: { database: SqliteDatabase; model: ChatModel; now?: () => Date };
   wsClientFactory?: (params: {
     appId: string;
     appSecret: string;
@@ -43,10 +47,12 @@ function assertFeishuConfig(config: AppConfig, secrets: AppSecrets): void {
 
 export function createFeishuEventDispatcher(options: {
   config: AppConfig;
+  secrets: AppSecrets;
   ingestor: GatewayIngestor;
   questionHandler?: FeishuQuestionHandler;
   resourceDownloader?: FeishuResourceDownloader;
   attachmentVectorIndexer?: (messageId: string) => Promise<{ chunks: number; vectors: number }>;
+  episodeProcessor?: { database: SqliteDatabase; model: ChatModel; now?: () => Date };
 }): lark.EventDispatcher {
   const answeredMessageIds = new Set<string>();
 
@@ -90,6 +96,19 @@ export function createFeishuEventDispatcher(options: {
       if (result.duplicate) {
         console.log("飞书消息重复投递：已跳过附件处理和回答。");
         return;
+      }
+
+      if (options.episodeProcessor) {
+        const episodeResult = await processEpisodesNow({
+          config: options.config,
+          secrets: options.secrets,
+          database: options.episodeProcessor.database,
+          model: options.episodeProcessor.model,
+          now: options.episodeProcessor.now?.(),
+        });
+        if (episodeResult.created > 0) {
+          console.log(`飞书会话记忆已生成：${episodeResult.created}`);
+        }
       }
 
       if (result.attachment?.downloaded) {
@@ -145,10 +164,12 @@ export function createFeishuGateway(options: FeishuGatewayOptions): FeishuGatewa
 
   const eventDispatcher = createFeishuEventDispatcher({
     config: options.config,
+    secrets: options.secrets,
     ingestor: options.ingestor,
     questionHandler: options.questionHandler,
     resourceDownloader: options.resourceDownloader,
     attachmentVectorIndexer: options.attachmentVectorIndexer,
+    episodeProcessor: options.episodeProcessor,
   });
 
   return {

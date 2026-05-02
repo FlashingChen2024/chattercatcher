@@ -66,6 +66,39 @@ export function migrateDatabase(database: SqliteDatabase): void {
       tokenize = 'unicode61'
     );
 
+    CREATE TABLE IF NOT EXISTS memory_episodes (
+      id TEXT PRIMARY KEY,
+      chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+      summary TEXT NOT NULL,
+      message_count INTEGER NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(chat_id, started_at, ended_at)
+    );
+
+    CREATE TABLE IF NOT EXISTS memory_episode_messages (
+      episode_id TEXT NOT NULL REFERENCES memory_episodes(id) ON DELETE CASCADE,
+      message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+      position INTEGER NOT NULL,
+      PRIMARY KEY (episode_id, message_id)
+    );
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS memory_episodes_fts USING fts5(
+      summary,
+      episode_id UNINDEXED,
+      tokenize = 'unicode61'
+    );
+
+    CREATE TRIGGER IF NOT EXISTS memory_episodes_delete_fts
+    AFTER DELETE ON memory_episodes
+    BEGIN
+      DELETE FROM memory_episodes_fts WHERE episode_id = old.id;
+    END;
+
+    CREATE INDEX IF NOT EXISTS memory_episode_messages_message_idx
+    ON memory_episode_messages(message_id);
+
     CREATE TABLE IF NOT EXISTS message_chunk_embeddings (
       chunk_id TEXT NOT NULL REFERENCES message_chunks(id) ON DELETE CASCADE,
       model TEXT NOT NULL,

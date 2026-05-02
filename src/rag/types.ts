@@ -1,4 +1,4 @@
-export type SourceType = "message" | "file" | "image" | "audio" | "link" | "feishu_doc";
+export type SourceType = "message" | "episode" | "file" | "image" | "audio" | "link" | "feishu_doc";
 
 export interface EvidenceSource {
   type: SourceType;

@@ -1,7 +1,9 @@
 import type { AppConfig, AppSecrets } from "../config/schema.js";
 import type { SqliteDatabase } from "../db/database.js";
+import { EpisodeRepository } from "../episodes/repository.js";
 import type { MessageRepository } from "../messages/repository.js";
 import { createEmbeddingModel } from "../llm/openai-compatible.js";
+import { EpisodeFtsRetriever } from "./episode-retriever.js";
 import { HybridRetriever } from "./hybrid-retriever.js";
 import { MessageFtsRetriever } from "./message-retriever.js";
 import type { Retriever } from "./retriever.js";
@@ -19,7 +21,10 @@ export async function createHybridRetriever(input: {
   messages: MessageRepository;
   excludeMessageIds?: string[];
 }): Promise<{ retriever: Retriever; close: () => void }> {
-  const retrievers: Retriever[] = [new MessageFtsRetriever(input.messages, { excludeMessageIds: input.excludeMessageIds })];
+  const retrievers: Retriever[] = [
+    new EpisodeFtsRetriever(new EpisodeRepository(input.database)),
+    new MessageFtsRetriever(input.messages, { excludeMessageIds: input.excludeMessageIds }),
+  ];
   const closers: Array<() => void> = [];
 
   if (hasEmbeddingConfig(input.config, input.secrets)) {

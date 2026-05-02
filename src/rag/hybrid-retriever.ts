@@ -13,6 +13,16 @@ function normalizeScore(score: number): number {
   return Math.max(0, Math.min(1, score));
 }
 
+function evidenceTimestampMs(evidence: EvidenceBlock): number {
+  const timestamp = evidence.source.timestamp;
+  if (!timestamp) {
+    return 0;
+  }
+
+  const parsed = Date.parse(timestamp);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export class HybridRetriever implements Retriever {
   constructor(
     private readonly retrievers: Retriever[],
@@ -23,22 +33,22 @@ export class HybridRetriever implements Retriever {
     const results = await Promise.all(this.retrievers.map((retriever) => retriever.retrieve(question)));
     const merged = new Map<string, EvidenceBlock>();
 
-    for (const [retrieverIndex, evidenceList] of results.entries()) {
+    for (const evidenceList of results) {
       for (const evidence of evidenceList) {
         const existing = merged.get(evidence.id);
-        const weightedScore = normalizeScore(evidence.score) + (this.retrievers.length - retrieverIndex) * 0.01;
+        const score = normalizeScore(evidence.score);
 
-        if (!existing || weightedScore > existing.score) {
+        if (!existing || score > existing.score) {
           merged.set(evidence.id, {
             ...evidence,
-            score: weightedScore,
+            score,
           });
         }
       }
     }
 
     return [...merged.values()]
-      .sort((left, right) => right.score - left.score)
+      .sort((left, right) => right.score - left.score || evidenceTimestampMs(right) - evidenceTimestampMs(left))
       .slice(0, this.options.limit ?? 8);
   }
 }

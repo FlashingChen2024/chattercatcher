@@ -12,6 +12,7 @@ import { getDatabasePath, openDatabase } from "./db/database.js";
 import { formatDoctorChecks, runDoctor } from "./doctor/checks.js";
 import { exportLocalData } from "./export/data-export.js";
 import { restoreLocalData } from "./export/data-restore.js";
+import { processEpisodesNow } from "./episodes/manual-process.js";
 import { ensureFeishuBotOpenId } from "./feishu/bot-info.js";
 import { createFeishuGateway } from "./feishu/gateway.js";
 import type { FeishuReceiveMessageEvent } from "./feishu/normalize.js";
@@ -87,6 +88,12 @@ async function promptForConfiguration(config: AppConfig, secrets: AppSecrets): P
     message: "群聊回答是否要求 @ 机器人？",
     default: config.feishu.requireMention,
   });
+  config.episodes.windowMinutes =
+    (await number({ message: "会话记忆聚合窗口（分钟）", default: config.episodes.windowMinutes, required: true })) ??
+    config.episodes.windowMinutes;
+  config.episodes.quietMinutes =
+    (await number({ message: "会话静默多久后生成记忆（分钟）", default: config.episodes.quietMinutes, required: true })) ??
+    config.episodes.quietMinutes;
 }
 
 async function tryEnsureFeishuBotOpenId(config: AppConfig, secrets: AppSecrets): Promise<void> {
@@ -246,6 +253,10 @@ async function startGatewayForegroundCommand(): Promise<void> {
             messageIds: [messageId],
           })
       : undefined,
+    episodeProcessor: {
+      database,
+      model: createChatModel(config, secrets),
+    },
     questionHandler: new FeishuQuestionHandler({
       config,
       secrets,
@@ -482,6 +493,27 @@ processCommand
       }
 
       console.log(`消息处理完成：chunks=${result.chunks}, vectors=${result.vectors}`);
+    } finally {
+      database.close();
+    }
+  });
+
+processCommand
+  .command("episodes")
+  .description("立即生成会话记忆块，把碎片化闲聊整理成可检索摘要")
+  .action(async () => {
+    const config = await loadConfig();
+    const secrets = await loadSecrets();
+    const database = openDatabase(config);
+
+    try {
+      const result = await processEpisodesNow({
+        config,
+        secrets,
+        database,
+        model: createChatModel(config, secrets),
+      });
+      console.log(`会话记忆处理完成：episodes=${result.created}`);
     } finally {
       database.close();
     }

@@ -65,5 +65,36 @@ describe("HybridRetriever", () => {
     expect(result).toHaveLength(1);
     expect(result[0]?.text).toBe("新分数");
   });
+
+  it("相同分数时优先返回更新时间更新的证据", async () => {
+    const episode: Retriever = {
+      async retrieve() {
+        return [
+          {
+            id: "episode-old",
+            text: "端午活动时间是 2026/6/30。",
+            score: 1,
+            source: { type: "episode", label: "家庭群", timestamp: "2026-05-01T10:00:00.000Z" },
+          },
+        ];
+      },
+    };
+    const message: Retriever = {
+      async retrieve() {
+        return [
+          {
+            id: "message-new",
+            text: "端午活动最终改到 2026/7/1。",
+            score: 1,
+            source: { type: "message", label: "家庭群", timestamp: "2026-05-01T11:00:00.000Z" },
+          },
+        ];
+      },
+    };
+
+    const result = await new HybridRetriever([episode, message]).retrieve("端午活动时间");
+
+    expect(result[0]?.id).toBe("message-new");
+  });
 });
 
