@@ -143,6 +143,78 @@ export class ImageMultimodalTaskRepository {
     return rows.map((row) => mapRow(row)).filter((row): row is ImageMultimodalTaskRecord => Boolean(row));
   }
 
+  markRunning(id: string): ImageMultimodalTaskRecord {
+    const result = this.database
+      .prepare(
+        `
+          UPDATE image_multimodal_tasks
+          SET status = 'running',
+              attempts = attempts + 1,
+              last_error = NULL,
+              updated_at = @updatedAt
+          WHERE id = @id AND status = 'pending'
+        `,
+      )
+      .run({ id, updatedAt: nowIso() });
+
+    if (result.changes === 0) {
+      throw new Error(`图片多模态任务状态无法更新：${id}`);
+    }
+
+    return this.requireById(id);
+  }
+
+  markSucceeded(id: string, derivedMessageId: string): ImageMultimodalTaskRecord {
+    this.database
+      .prepare(
+        `
+          UPDATE image_multimodal_tasks
+          SET status = 'succeeded',
+              last_error = NULL,
+              derived_message_id = @derivedMessageId,
+              updated_at = @updatedAt
+          WHERE id = @id
+        `,
+      )
+      .run({ id, derivedMessageId, updatedAt: nowIso() });
+
+    return this.requireById(id);
+  }
+
+  markSkipped(id: string, reason: string): ImageMultimodalTaskRecord {
+    this.database
+      .prepare(
+        `
+          UPDATE image_multimodal_tasks
+          SET status = 'skipped',
+              last_error = @reason,
+              derived_message_id = NULL,
+              updated_at = @updatedAt
+          WHERE id = @id
+        `,
+      )
+      .run({ id, reason, updatedAt: nowIso() });
+
+    return this.requireById(id);
+  }
+
+  markFailed(id: string, error: string, finalFailure: boolean): ImageMultimodalTaskRecord {
+    this.database
+      .prepare(
+        `
+          UPDATE image_multimodal_tasks
+          SET status = @status,
+              last_error = @error,
+              derived_message_id = NULL,
+              updated_at = @updatedAt
+          WHERE id = @id
+        `,
+      )
+      .run({ id, status: finalFailure ? "failed" : "pending", error, updatedAt: nowIso() });
+
+    return this.requireById(id);
+  }
+
   getById(id: string): ImageMultimodalTaskRecord | undefined {
     const row = this.database
       .prepare(
@@ -167,5 +239,13 @@ export class ImageMultimodalTaskRepository {
       .get(id) as ImageMultimodalTaskRow | undefined;
 
     return mapRow(row);
+  }
+
+  private requireById(id: string): ImageMultimodalTaskRecord {
+    const record = this.getById(id);
+    if (!record) {
+      throw new Error(`图片多模态任务不存在：${id}`);
+    }
+    return record;
   }
 }
