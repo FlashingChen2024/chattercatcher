@@ -47,6 +47,15 @@ export interface IngestMessageInput {
   sentAt: string;
 }
 
+export interface CreateImageSummaryMessageInput {
+  sourceMessageId: string;
+  imageKey: string;
+  summary: string;
+  reason?: string;
+  multimodalModel: string;
+  generatedAt: string;
+}
+
 export interface MessageSearchResult {
   chunkId: string;
   messageId: string;

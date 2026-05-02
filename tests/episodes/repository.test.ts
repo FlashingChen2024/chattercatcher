@@ -158,4 +158,82 @@ describe("EpisodeRepository", () => {
       database.close();
     }
   });
+
+  it("派生图片转述生成后会重算所属会话记忆窗口", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const database = openDatabase(config);
+    const messages = new MessageRepository(database);
+    const episodes = new EpisodeRepository(database);
+
+    try {
+      const firstMessageId = messages.ingest({
+        platform: "dev",
+        platformChatId: "family",
+        chatName: "家庭群",
+        platformMessageId: "m1",
+        senderId: "mom",
+        senderName: "老妈",
+        messageType: "text",
+        text: "看一下这张白板。",
+        sentAt: "2026-05-01T10:00:00.000Z",
+      });
+      const imageMessageId = messages.ingest({
+        platform: "dev",
+        platformChatId: "family",
+        chatName: "家庭群",
+        platformMessageId: "image-1",
+        senderId: "mom",
+        senderName: "老妈",
+        messageType: "image",
+        text: "[图片] img-1",
+        sentAt: "2026-05-01T10:01:00.000Z",
+      });
+      await episodes.summarizeReadyWindows({
+        now: new Date("2026-05-01T10:04:00.000Z"),
+        quietMs: 2 * 60 * 1000,
+        windowMs: 10 * 60 * 1000,
+        summarize: async () => "原摘要未包含图片转述。",
+      });
+      const derivedMessageId = messages.createImageSummaryMessage({
+        sourceMessageId: imageMessageId,
+        imageKey: "img-1",
+        summary: "白板写着 5 月 10 日上线图片多模态功能。",
+        multimodalModel: "vision",
+        generatedAt: "2026-05-01T10:05:00.000Z",
+      });
+
+      messages.ingest({
+        platform: "dev",
+        platformChatId: "family",
+        chatName: "家庭群",
+        platformMessageId: "next-window",
+        senderId: "dad",
+        senderName: "老爸",
+        messageType: "text",
+        text: "下一段窗口里的内容不应被重算拉进来。",
+        sentAt: "2026-05-01T10:08:00.000Z",
+      });
+
+      const refreshed = await episodes.refreshWindowForMessage({
+        messageId: derivedMessageId,
+        windowMs: 10 * 60 * 1000,
+        summarize: async (window) => {
+          expect(window.messages.map((message) => message.id)).toEqual([firstMessageId, imageMessageId, derivedMessageId]);
+          return "本窗口包含图片转述：白板写着 5 月 10 日上线图片多模态功能。";
+        },
+      });
+
+      expect(refreshed?.messageIds).toEqual([firstMessageId, imageMessageId, derivedMessageId]);
+      expect(episodes.getEpisodeCount()).toBe(1);
+      expect(episodes.listRecentEpisodes(1)[0]?.summary).toContain("图片转述");
+      expect(episodes.searchEpisodes("10")[0]?.sourceMessageIds).toEqual([
+        firstMessageId,
+        imageMessageId,
+        derivedMessageId,
+      ]);
+    } finally {
+      database.close();
+    }
+  });
 });

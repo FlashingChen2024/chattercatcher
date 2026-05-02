@@ -2,9 +2,13 @@ import * as lark from "@larksuiteoapi/node-sdk";
 import type { AppConfig, AppSecrets } from "../config/schema.js";
 import { processEpisodesNow } from "../episodes/manual-process.js";
 import type { GatewayIngestAndDownloadResult, GatewayIngestor } from "../gateway/ingest.js";
+import { MessageRepository } from "../messages/repository.js";
 import type { ChatModel } from "../rag/types.js";
 import type { SqliteDatabase } from "../db/database.js";
 import type { FeishuReceiveMessageEvent } from "./normalize.js";
+import { ImageMultimodalTaskRepository } from "../multimodal/tasks.js";
+import type { MultimodalModel } from "../multimodal/types.js";
+import { ImageMultimodalWorker } from "../multimodal/worker.js";
 import { getFeishuQuestionDecision, isFeishuMessageAddressedToBot } from "./question.js";
 import type { FeishuQuestionHandler } from "./question.js";
 import { FeishuResourceDownloader } from "./resource-downloader.js";
@@ -28,6 +32,7 @@ export interface FeishuGatewayOptions {
   resourceDownloader?: FeishuResourceDownloader;
   attachmentVectorIndexer?: (messageId: string) => Promise<{ chunks: number; vectors: number }>;
   episodeProcessor?: { database: SqliteDatabase; model: ChatModel; now?: () => Date };
+  imageMultimodalProcessor?: { database: SqliteDatabase; model: MultimodalModel };
   wsClientFactory?: (params: {
     appId: string;
     appSecret: string;
@@ -62,6 +67,7 @@ export function createFeishuEventDispatcher(options: {
   resourceDownloader?: FeishuResourceDownloader;
   attachmentVectorIndexer?: (messageId: string) => Promise<{ chunks: number; vectors: number }>;
   episodeProcessor?: { database: SqliteDatabase; model: ChatModel; now?: () => Date };
+  imageMultimodalProcessor?: { database: SqliteDatabase; model: MultimodalModel };
 }): lark.EventDispatcher {
   const answeredMessageIds = new Set<string>();
 
@@ -92,6 +98,7 @@ export function createFeishuEventDispatcher(options: {
             payload,
             downloader: options.resourceDownloader,
             config: options.config,
+            secrets: options.secrets,
             vectorIndexMessage: options.attachmentVectorIndexer,
           })
         : options.ingestor.ingestFeishuEvent(payload);
@@ -122,6 +129,23 @@ export function createFeishuEventDispatcher(options: {
 
       if (result.attachment?.downloaded) {
         console.log(`飞书附件已下载：${result.attachment.downloaded.storedPath}`);
+        if (options.imageMultimodalProcessor && result.attachment.imageTask) {
+          void new ImageMultimodalWorker({
+            config: options.config,
+            messages: new MessageRepository(options.imageMultimodalProcessor.database),
+            tasks: new ImageMultimodalTaskRepository(options.imageMultimodalProcessor.database),
+            model: options.imageMultimodalProcessor.model,
+            multimodalModelName: options.config.multimodal.model,
+            vectorIndexMessage: options.attachmentVectorIndexer,
+          }).processPending().then((imageResult) => {
+            console.log(
+              `飞书图片多模态处理完成：processed=${imageResult.processed}, succeeded=${imageResult.succeeded}, skipped=${imageResult.skipped}, failed=${imageResult.failed}`,
+            );
+          }).catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`飞书图片多模态处理失败：${message}`);
+          });
+        }
         if (result.attachment.indexedMessageId) {
           console.log(`飞书附件已进入 RAG：${result.attachment.indexedMessageId}`);
           if (result.attachment.vectorIndexed) {
@@ -179,6 +203,7 @@ export function createFeishuGateway(options: FeishuGatewayOptions): FeishuGatewa
     resourceDownloader: options.resourceDownloader,
     attachmentVectorIndexer: options.attachmentVectorIndexer,
     episodeProcessor: options.episodeProcessor,
+    imageMultimodalProcessor: options.imageMultimodalProcessor,
   });
 
   return {

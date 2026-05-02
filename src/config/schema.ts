@@ -23,6 +23,13 @@ export const appConfigSchema = z.object({
     model: z.string().default(""),
     dimension: z.number().int().positive().nullable().default(null),
   }),
+  multimodal: z.preprocess(
+    (value) => value ?? {},
+    z.object({
+      baseUrl: z.string().url().or(z.literal("")).default(""),
+      model: z.string().default(""),
+    }),
+  ),
   storage: z.object({
     dataDir: z.string().default(defaultDataDir),
   }),
@@ -51,6 +58,12 @@ export const appSecretsSchema = z.object({
   embedding: z.object({
     apiKey: z.string().default(""),
   }),
+  multimodal: z.preprocess(
+    (value) => value ?? {},
+    z.object({
+      apiKey: z.string().default(""),
+    }),
+  ),
 });
 
 export type AppConfig = z.infer<typeof appConfigSchema>;
@@ -61,6 +74,7 @@ export function createDefaultConfig(): AppConfig {
     feishu: {},
     llm: {},
     embedding: {},
+    multimodal: {},
     storage: {},
     web: {},
     schedules: {},
@@ -73,5 +87,6 @@ export function createDefaultSecrets(): AppSecrets {
     feishu: {},
     llm: {},
     embedding: {},
+    multimodal: {},
   });
 }
