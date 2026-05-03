@@ -4,6 +4,7 @@ import { MessageRepository } from "../messages/repository.js";
 import { formatCitations } from "../rag/citations.js";
 import { askWithAgenticRag } from "../rag/agentic-qa-service.js";
 import { createAgenticRagSearchTools } from "../rag/factory.js";
+import { QaLogRepository } from "../rag/qa-logs.js";
 import type { ChatModel } from "../rag/types.js";
 import type { MessageSender } from "./sender.js";
 import type { FeishuReceiveMessageEvent } from "./normalize.js";
@@ -157,6 +158,7 @@ export class FeishuQuestionHandler {
     }
 
     const questionMessageId = payload.event?.message?.message_id;
+    const qaLogs = new QaLogRepository(this.options.database);
     await this.acknowledgeQuestion(decision.chatId, questionMessageId);
 
     const { tools, close } = await createAgenticRagSearchTools({
@@ -174,11 +176,32 @@ export class FeishuQuestionHandler {
           tools,
           model: this.options.model,
         });
+        qaLogs.create({
+          chatId: decision.chatId,
+          questionMessageId,
+          question: decision.question,
+          answer: result.answer,
+          citations: result.citations,
+          retrievalDebug: { evidenceCount: result.citations.length },
+          status: "answered",
+          createdAt: new Date().toISOString(),
+        });
         const citations = formatCitations(result.citations);
         const text = citations ? `${result.answer}\n\n引用：\n${citations}` : result.answer;
         await this.sendResponse(decision.chatId, questionMessageId, text);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        qaLogs.create({
+          chatId: decision.chatId,
+          questionMessageId,
+          question: decision.question,
+          answer: `暂时无法回答：${message}`,
+          citations: [],
+          retrievalDebug: {},
+          status: "failed",
+          error: message,
+          createdAt: new Date().toISOString(),
+        });
         await this.sendResponse(decision.chatId, questionMessageId, `暂时无法回答：${message}`);
       }
       return decision;

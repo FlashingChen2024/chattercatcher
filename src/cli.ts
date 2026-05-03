@@ -286,6 +286,9 @@ async function startGatewayForegroundCommand(): Promise<void> {
             model: createMultimodalModel(config, secrets),
           }
         : undefined,
+    indexingProcessor: {
+      database,
+    },
     questionHandler: new FeishuQuestionHandler({
       config,
       secrets,

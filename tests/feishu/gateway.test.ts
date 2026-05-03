@@ -2,7 +2,7 @@ import type * as lark from "@larksuiteoapi/node-sdk";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultConfig, createDefaultSecrets } from "../../src/config/schema.js";
 import { openDatabase } from "../../src/db/database.js";
 import { createFeishuGateway } from "../../src/feishu/gateway.js";
@@ -73,6 +73,64 @@ describe("createFeishuGateway", () => {
     });
 
     await expect(runtime.start()).rejects.toThrow("飞书长连接启动失败，请检查 App ID / App Secret");
+  });
+
+  it("Gateway 启动成功后启动索引调度器，停止时关闭调度器", async () => {
+    const config = createDefaultConfig();
+    config.feishu.appId = "cli_app_id";
+    const secrets = createDefaultSecrets();
+    secrets.feishu.appSecret = "app_secret";
+    const indexingScheduler = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      runDueNow: vi.fn(async () => undefined),
+    };
+
+    const runtime = createFeishuGateway({
+      config,
+      secrets,
+      ingestor: {} as GatewayIngestor,
+      indexingScheduler,
+      wsClientFactory: () => ({
+        async start() {},
+        close() {},
+      }),
+    });
+
+    await runtime.start();
+    runtime.stop();
+
+    expect(indexingScheduler.start).toHaveBeenCalledTimes(1);
+    expect(indexingScheduler.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("长连接启动失败时关闭索引调度器", async () => {
+    const config = createDefaultConfig();
+    config.feishu.appId = "cli_app_id";
+    const secrets = createDefaultSecrets();
+    secrets.feishu.appSecret = "app_secret";
+    const indexingScheduler = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      runDueNow: vi.fn(async () => undefined),
+    };
+
+    const runtime = createFeishuGateway({
+      config,
+      secrets,
+      ingestor: {} as GatewayIngestor,
+      indexingScheduler,
+      wsClientFactory: () => ({
+        async start() {
+          throw new Error("code: 1000040345, system busy");
+        },
+        close() {},
+      }),
+    });
+
+    await expect(runtime.start()).rejects.toThrow("飞书长连接启动失败，请检查 App ID / App Secret");
+    expect(indexingScheduler.start).not.toHaveBeenCalled();
+    expect(indexingScheduler.stop).toHaveBeenCalledTimes(1);
   });
 
   it("长连接事件进入 GatewayIngestor 并写入消息库", async () => {
