@@ -7,6 +7,7 @@ import { openDatabase } from "../../src/db/database.js";
 import { FeishuQuestionHandler, getFeishuQuestionDecision } from "../../src/feishu/question.js";
 import type { MessageSender } from "../../src/feishu/sender.js";
 import { MessageRepository } from "../../src/messages/repository.js";
+import { QaLogRepository } from "../../src/rag/qa-logs.js";
 import type { ChatModel, ToolChatResult } from "../../src/rag/types.js";
 
 let testDir: string;
@@ -223,6 +224,26 @@ describe("FeishuQuestionHandler", () => {
       expect(replies[0]?.text).toContain("引用");
       expect(replies[0]?.text).toContain("老妈在 2026-04-25 16:00 说");
       expect(replies[0]?.text).toContain("端午活动改到 2026/6/30，以这个为准。");
+
+      const qaLogs = new QaLogRepository(database).listRecent(10);
+      expect(qaLogs).toHaveLength(1);
+      expect(qaLogs[0]).toMatchObject({
+        chatId: "oc_family",
+        questionMessageId: "om_question",
+        question: "端午活动什么时候？",
+        answer: "端午活动目前是 2026/6/30。[S1]",
+        citations: [
+          {
+            sourceId: "S1",
+            snippet: "端午活动改到 2026/6/30，以这个为准。",
+          },
+        ],
+        retrievalDebug: {
+          evidenceCount: 1,
+        },
+        status: "answered",
+        error: null,
+      });
     } finally {
       database.close();
     }
@@ -288,6 +309,19 @@ describe("FeishuQuestionHandler", () => {
 
       expect(sent[0]?.text).toBe("收到，正在查。");
       expect(sent[1]?.text).toContain("暂时无法回答：模型未配置");
+
+      const qaLogs = new QaLogRepository(database).listRecent(10);
+      expect(qaLogs).toHaveLength(1);
+      expect(qaLogs[0]).toMatchObject({
+        chatId: "oc_family",
+        questionMessageId: "om_question",
+        question: "端午活动什么时候？",
+        answer: "暂时无法回答：模型未配置",
+        citations: [],
+        retrievalDebug: {},
+        status: "failed",
+        error: "模型未配置",
+      });
     } finally {
       database.close();
     }
