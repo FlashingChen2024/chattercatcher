@@ -2,7 +2,10 @@ import * as lark from "@larksuiteoapi/node-sdk";
 import type { AppConfig, AppSecrets } from "../config/schema.js";
 import { processEpisodesNow } from "../episodes/manual-process.js";
 import type { GatewayIngestAndDownloadResult, GatewayIngestor } from "../gateway/ingest.js";
+import type { IndexingScheduler } from "../gateway/indexing-scheduler.js";
+import { createIndexingScheduler } from "../gateway/indexing-scheduler.js";
 import { MessageRepository } from "../messages/repository.js";
+import { processMessagesNow } from "../rag/manual-index.js";
 import type { ChatModel } from "../rag/types.js";
 import type { SqliteDatabase } from "../db/database.js";
 import type { FeishuReceiveMessageEvent } from "./normalize.js";
@@ -33,6 +36,8 @@ export interface FeishuGatewayOptions {
   attachmentVectorIndexer?: (messageId: string) => Promise<{ chunks: number; vectors: number }>;
   episodeProcessor?: { database: SqliteDatabase; model: ChatModel; now?: () => Date };
   imageMultimodalProcessor?: { database: SqliteDatabase; model: MultimodalModel };
+  indexingProcessor?: { database: SqliteDatabase };
+  indexingScheduler?: IndexingScheduler;
   wsClientFactory?: (params: {
     appId: string;
     appSecret: string;
@@ -206,15 +211,34 @@ export function createFeishuGateway(options: FeishuGatewayOptions): FeishuGatewa
     imageMultimodalProcessor: options.imageMultimodalProcessor,
   });
 
+  const indexingScheduler = options.indexingScheduler ?? (
+    options.indexingProcessor
+      ? createIndexingScheduler({
+          schedule: options.config.schedules.indexing,
+          work: async () => {
+            await processMessagesNow({
+              config: options.config,
+              secrets: options.secrets,
+              database: options.indexingProcessor!.database,
+              limit: 10_000,
+            });
+          },
+        })
+      : undefined
+  );
+
   return {
     async start() {
       try {
         await wsClient.start({ eventDispatcher });
+        indexingScheduler?.start();
       } catch (error) {
+        indexingScheduler?.stop();
         throw formatGatewayStartError(error);
       }
     },
     stop() {
+      indexingScheduler?.stop();
       wsClient.close({ force: true });
     },
   };
