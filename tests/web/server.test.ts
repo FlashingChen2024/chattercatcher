@@ -8,6 +8,7 @@ import { ingestLocalFile } from "../../src/files/ingest.js";
 import { FileJobRepository } from "../../src/files/jobs.js";
 import { MessageRepository } from "../../src/messages/repository.js";
 import { EpisodeRepository } from "../../src/episodes/repository.js";
+import { QaLogRepository } from "../../src/rag/qa-logs.js";
 import { createWebApp } from "../../src/web/server.js";
 
 let testDir: string;
@@ -48,6 +49,16 @@ describe("web server", () => {
         windowMs: 10 * 60 * 1000,
         summarize: async () => "端午活动改到 2026/6/30，这是来自家庭群的会话记忆。",
       });
+      await new QaLogRepository(database).create({
+        chatId: "family",
+        questionMessageId: "question-1",
+        question: "端午活动改到哪天？",
+        answer: "端午活动改到 2026/6/30。",
+        citations: [{ sourceId: "message-1", snippet: "端午活动改到 2026/6/30。" }],
+        retrievalDebug: { keywordHits: 1, vectorHits: 0 },
+        status: "answered",
+        createdAt: "2026-04-25T08:11:00.000Z",
+      });
     } finally {
       database.close();
     }
@@ -56,9 +67,10 @@ describe("web server", () => {
     try {
       const status = await app.inject({ method: "GET", url: "/api/status" });
       expect(status.statusCode).toBe(200);
-      expect(status.json()).toMatchObject({
+      const statusJson = status.json();
+      expect(statusJson).toMatchObject({
         app: "ChatterCatcher",
-        data: { chats: 2, messages: 2, files: 1, episodes: 1 },
+        data: { chats: 2, messages: 2, files: 1, episodes: 1, qaLogs: 1 },
         rag: {
           mode: "required",
           retrieval: {
@@ -67,6 +79,7 @@ describe("web server", () => {
           },
         },
       });
+      expect(statusJson.data).toHaveProperty("qaLogs");
 
       const chats = await app.inject({ method: "GET", url: "/api/chats" });
       expect(chats.json().items.map((item: { name: string }) => item.name)).toContain("家庭群");
@@ -84,6 +97,22 @@ describe("web server", () => {
         messageCount: 1,
         startedAt: "2026-04-25T08:00:00.000Z",
         endedAt: "2026-04-25T08:00:00.000Z",
+      });
+
+      const qaLogs = await app.inject({ method: "GET", url: "/api/qa-logs?limit=5" });
+      expect(qaLogs.statusCode).toBe(200);
+      expect(qaLogs.json()).toMatchObject({
+        total: 1,
+        items: [
+          {
+            question: "端午活动改到哪天？",
+            answer: "端午活动改到 2026/6/30。",
+            status: "answered",
+            citations: [{ sourceId: "message-1", snippet: "端午活动改到 2026/6/30。" }],
+            retrievalDebug: { keywordHits: 1, vectorHits: 0 },
+            createdAt: "2026-04-25T08:11:00.000Z",
+          },
+        ],
       });
 
       const files = await app.inject({ method: "GET", url: "/api/files" });
@@ -114,6 +143,8 @@ describe("web server", () => {
       expect(response.body).toContain("本地优先的家庭群知识库");
       expect(response.body).toContain("不堆叠全量上下文");
       expect(response.body).toContain("会话记忆");
+      expect(response.body).toContain("问答日志");
+      expect(response.body).toContain('id="qa-logs" class="empty">正在读取...</div>');
       expect(response.body).toContain("chattercatcher process episodes");
       expect(response.body).toContain("立即处理");
       expect(response.body).toContain("setInterval");

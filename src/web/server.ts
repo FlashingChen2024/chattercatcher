@@ -7,6 +7,7 @@ import { EpisodeRepository } from "../episodes/repository.js";
 import { getGatewayStatus } from "../gateway/index.js";
 import { MessageRepository } from "../messages/repository.js";
 import { processMessagesNow } from "../rag/manual-index.js";
+import { QaLogRepository } from "../rag/qa-logs.js";
 
 function buildHtml(): string {
   return `<!doctype html>
@@ -136,6 +137,10 @@ function buildHtml(): string {
             <h2>会话记忆</h2>
             <div id="episodes" class="empty">正在读取...</div>
           </section>
+          <section>
+            <h2>问答日志</h2>
+            <div id="qa-logs" class="empty">正在读取...</div>
+          </section>
         </div>
         <aside>
           <section>
@@ -166,6 +171,7 @@ function buildHtml(): string {
       const chats = document.querySelector("#chats");
       const files = document.querySelector("#files");
       const fileJobs = document.querySelector("#file-jobs");
+      const qaLogs = document.querySelector("#qa-logs");
       const processMessages = document.querySelector("#process-messages");
       const actionStatus = document.querySelector("#action-status");
 
@@ -357,14 +363,39 @@ function buildHtml(): string {
         \`;
       }
 
+      function renderQaLogs(items) {
+        if (items.length === 0) {
+          qaLogs.className = "empty";
+          qaLogs.textContent = "还没有问答日志。";
+          return;
+        }
+        qaLogs.className = "";
+        qaLogs.innerHTML = `
+          <div class="message-list">
+              ${items.map((item) => `
+                <article class="message-item">
+                  <div class="message-meta">
+                    <span>${escapeHtml(formatDateTime(item.createdAt))}</span>
+                    <span>${escapeHtml(item.status)}</span>
+                    <span>${escapeHtml((item.citations || []).length)} 条引用</span>
+                  </div>
+                  <div class="message-body"><strong>问：</strong>${escapeHtml(item.question)}</div>
+                  <div class="message-body"><strong>答：</strong>${escapeHtml(item.answer)}</div>
+                </article>
+              `).join("")}
+          </div>
+        `;
+      }
+
       async function load() {
-        const [status, recent, episodeList, chatList, fileList, jobList] = await Promise.all([
+        const [status, recent, episodeList, chatList, fileList, jobList, qaLogList] = await Promise.all([
           fetch("/api/status").then((response) => response.json()),
           fetch("/api/messages/recent?limit=20").then((response) => response.json()),
           fetch("/api/episodes?limit=10").then((response) => response.json()),
           fetch("/api/chats").then((response) => response.json()),
           fetch("/api/files").then((response) => response.json()),
           fetch("/api/file-jobs").then((response) => response.json()),
+          fetch("/api/qa-logs?limit=10").then((response) => response.json()),
         ]);
         renderMetrics(status);
         renderMessages(recent.items);
@@ -372,6 +403,7 @@ function buildHtml(): string {
         renderChats(chatList.items);
         renderFiles(fileList.items);
         renderFileJobs(jobList.items);
+        renderQaLogs(qaLogList.items);
       }
 
       async function processNow() {
@@ -421,6 +453,7 @@ export function createWebApp(config: AppConfig): FastifyInstance {
   const messages = new MessageRepository(database);
   const episodes = new EpisodeRepository(database);
   const fileJobs = new FileJobRepository(database);
+  const qaLogs = new QaLogRepository(database);
 
   app.addHook("onClose", async () => {
     database.close();
@@ -434,6 +467,7 @@ export function createWebApp(config: AppConfig): FastifyInstance {
       messages: messages.getMessageCount(),
       episodes: episodes.getEpisodeCount(),
       files: messages.listFiles(1_000).length,
+      qaLogs: qaLogs.getCount(),
     },
     rag: {
       mode: "required",
@@ -477,6 +511,13 @@ export function createWebApp(config: AppConfig): FastifyInstance {
     const limit = parseLimit((request.query as { limit?: string }).limit, 20, 100);
     return {
       items: episodes.listRecentEpisodes(limit),
+    };
+  });
+
+  app.get("/api/qa-logs", async (request) => {
+    const limit = parseLimit((request.query as { limit?: string }).limit, 20, 100);
+    return {
+      items: qaLogs.listRecent(limit),
     };
   });
 
