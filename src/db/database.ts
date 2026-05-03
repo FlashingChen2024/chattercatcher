@@ -111,6 +111,22 @@ export function migrateDatabase(database: SqliteDatabase): void {
     CREATE INDEX IF NOT EXISTS message_chunk_embeddings_model_idx
     ON message_chunk_embeddings(model, dimension);
 
+    CREATE TABLE IF NOT EXISTS qa_logs (
+      id TEXT PRIMARY KEY,
+      chat_id TEXT,
+      question_message_id TEXT,
+      question TEXT NOT NULL,
+      answer TEXT NOT NULL,
+      citations_json TEXT NOT NULL,
+      retrieval_debug_json TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('answered','failed')),
+      error TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS qa_logs_created_at_idx ON qa_logs(created_at);
+    CREATE INDEX IF NOT EXISTS qa_logs_chat_idx ON qa_logs(chat_id, created_at);
+
     CREATE TABLE IF NOT EXISTS file_jobs (
       id TEXT PRIMARY KEY,
       source_path TEXT NOT NULL,
