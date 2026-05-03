@@ -233,10 +233,16 @@ describe("FeishuQuestionHandler", () => {
         question: "端午活动什么时候？",
         answer: "端午活动目前是 2026/6/30。[S1]",
         citations: [
-          {
-            sourceId: "S1",
-            snippet: "端午活动改到 2026/6/30，以这个为准。",
-          },
+          expect.objectContaining({
+            marker: "S1",
+            text: "端午活动改到 2026/6/30，以这个为准。",
+            source: {
+              type: "message",
+              label: "家庭群",
+              sender: "老妈",
+              timestamp: "2026-04-25T08:00:00.000Z",
+            },
+          }),
         ],
         retrievalDebug: {
           evidenceCount: 1,
