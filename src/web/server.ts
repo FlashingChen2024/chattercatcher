@@ -375,12 +375,12 @@ function buildHtml(): string {
           return [
             '<article class="message-item">',
             '  <div class="message-meta">',
-            `    <span>${escapeHtml(formatDateTime(item.createdAt))}</span>`,
-            `    <span>${escapeHtml(item.status)}</span>`,
-            `    <span>${escapeHtml(citationCount)} 条引用</span>`,
+            "    <span>" + escapeHtml(formatDateTime(item.createdAt)) + "</span>",
+            "    <span>" + escapeHtml(item.status) + "</span>",
+            "    <span>" + escapeHtml(citationCount) + " 条引用</span>",
             "  </div>",
-            `  <div class="message-body"><strong>问：</strong>${escapeHtml(item.question)}</div>`,
-            `  <div class="message-body"><strong>答：</strong>${escapeHtml(item.answer)}</div>`,
+            "  <div class=\"message-body\"><strong>问：</strong>" + escapeHtml(item.question) + "</div>",
+            "  <div class=\"message-body\"><strong>答：</strong>" + escapeHtml(item.answer) + "</div>",
             "</article>",
           ].join("\n");
         });

@@ -12,7 +12,7 @@ describe("matchesCronMinuteSchedule", () => {
 describe("createIndexingScheduler", () => {
   it("disables invalid schedules safely without calling work", async () => {
     const work = vi.fn(async () => undefined);
-    const setIntervalFn = vi.fn(() => 123 as ReturnType<typeof setInterval>);
+    const setIntervalFn = vi.fn(() => 123 as unknown as ReturnType<typeof setInterval>);
 
     const scheduler = createIndexingScheduler({
       schedule: "bad cron",
