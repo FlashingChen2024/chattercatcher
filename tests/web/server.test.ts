@@ -101,8 +101,8 @@ describe("web server", () => {
 
       const qaLogs = await app.inject({ method: "GET", url: "/api/qa-logs?limit=5" });
       expect(qaLogs.statusCode).toBe(200);
+      expect(qaLogs.json()).not.toHaveProperty("total");
       expect(qaLogs.json()).toMatchObject({
-        total: 1,
         items: [
           {
             question: "端午活动改到哪天？",
