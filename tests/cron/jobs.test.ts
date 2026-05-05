@@ -59,6 +59,21 @@ describe("CronJobRepository", () => {
     }
   });
 
+  it("rejects blank prompts after trimming", () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const database = openDatabase(config);
+
+    try {
+      const repository = new CronJobRepository(database);
+      expect(() =>
+        repository.create({ chatId: "chat-a", schedule: "0 9 * * *", prompt: "   " }),
+      ).toThrow("定时任务 prompt 不能为空");
+    } finally {
+      database.close();
+    }
+  });
+
   it("soft deletes only the matching chat job", () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;
@@ -72,6 +87,50 @@ describe("CronJobRepository", () => {
       expect(repository.deleteByChat(created.id, "chat-a")).toBe(true);
       expect(repository.listByChat("chat-a")).toHaveLength(0);
       expect(repository.list(10)[0]).toMatchObject({ id: created.id, status: "deleted" });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("does not mutate deleted jobs on success/failure marks", () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const database = openDatabase(config);
+
+    try {
+      const repository = new CronJobRepository(database, { now: () => new Date(2026, 4, 5, 8, 58, 0) });
+      const created = repository.create({ chatId: "chat-a", schedule: "0 9 * * *", prompt: "总结" });
+
+      expect(repository.deleteByChat(created.id, "chat-a")).toBe(true);
+      const deletedBefore = repository.get(created.id)!;
+
+      repository.markSuccess(created.id, new Date(2026, 4, 5, 9, 0, 0));
+      repository.markFailure(created.id, "LLM 请求失败", new Date(2026, 4, 6, 9, 0, 0));
+
+      const deletedAfter = repository.get(created.id)!;
+      expect(deletedAfter.status).toBe("deleted");
+      expect(deletedAfter.nextRunAt).toBe(deletedBefore.nextRunAt);
+      expect(deletedAfter.lastRunAt).toBeUndefined();
+      expect(deletedAfter.lastError).toBeUndefined();
+    } finally {
+      database.close();
+    }
+  });
+
+  it("lists due jobs by next_run_at ascending with limit", () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const database = openDatabase(config);
+
+    try {
+      const repository = new CronJobRepository(database, { now: () => new Date(2026, 4, 5, 8, 50, 0) });
+      const first = repository.create({ chatId: "chat-a", schedule: "52 8 * * *", prompt: "任务一" });
+      const second = repository.create({ chatId: "chat-a", schedule: "53 8 * * *", prompt: "任务二" });
+      repository.create({ chatId: "chat-a", schedule: "54 8 * * *", prompt: "任务三" });
+
+      const due = repository.listDue(new Date(2026, 4, 5, 8, 55, 0), 2);
+      expect(due).toHaveLength(2);
+      expect(due.map((item) => item.id)).toEqual([first.id, second.id]);
     } finally {
       database.close();
     }

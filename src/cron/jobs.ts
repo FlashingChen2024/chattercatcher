@@ -114,11 +114,42 @@ export class CronJobRepository {
   }
 
   listDue(now: Date, limit = 20): CronJobRecord[] {
-    return this.listByWhere(
-      "WHERE status = 'active' AND next_run_at <= ?",
-      [now.toISOString()],
-      limit,
-    );
+    const rows = this.database
+      .prepare(
+        `
+        SELECT
+          id,
+          chat_id AS chatId,
+          created_by_open_id AS createdByOpenId,
+          schedule,
+          prompt,
+          status,
+          last_run_at AS lastRunAt,
+          next_run_at AS nextRunAt,
+          last_error AS lastError,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM cron_jobs
+        WHERE status = 'active' AND next_run_at <= ?
+        ORDER BY next_run_at ASC, updated_at ASC
+        LIMIT ?
+      `,
+      )
+      .all(now.toISOString(), limit) as CronJobRow[];
+
+    return rows.map((row) => ({
+      id: row.id,
+      chatId: row.chatId,
+      createdByOpenId: row.createdByOpenId ?? undefined,
+      schedule: row.schedule,
+      prompt: row.prompt,
+      status: row.status,
+      lastRunAt: row.lastRunAt ?? undefined,
+      nextRunAt: row.nextRunAt,
+      lastError: row.lastError ?? undefined,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }));
   }
 
   deleteByChat(id: string, chatId: string): boolean {
@@ -151,7 +182,7 @@ export class CronJobRepository {
         `
         UPDATE cron_jobs
         SET last_run_at = @lastRunAt, next_run_at = @nextRunAt, last_error = NULL, updated_at = @updatedAt
-        WHERE id = @id
+        WHERE id = @id AND status = 'active'
       `,
       )
       .run({
@@ -177,12 +208,13 @@ export class CronJobRepository {
       .prepare(
         `
         UPDATE cron_jobs
-        SET last_error = @lastError, next_run_at = @nextRunAt, updated_at = @updatedAt
-        WHERE id = @id
+        SET last_run_at = @lastRunAt, last_error = @lastError, next_run_at = @nextRunAt, updated_at = @updatedAt
+        WHERE id = @id AND status = 'active'
       `,
       )
       .run({
         id,
+        lastRunAt: failedAt.toISOString(),
         lastError: error,
         nextRunAt: nextRunAt.toISOString(),
         updatedAt: failedAt.toISOString(),
