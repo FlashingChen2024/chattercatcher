@@ -62,6 +62,22 @@ describe("createCronJobTools", () => {
     }
   });
 
+  it("lists only jobs in the current chat", async () => {
+    const { database, repository } = createRepository();
+    try {
+      repository.create({ chatId: "chat-a", schedule: "0 9 * * *", prompt: "总结 A" });
+      repository.create({ chatId: "chat-b", schedule: "0 10 * * *", prompt: "总结 B" });
+      const tools = createCronJobTools({ repository, chatId: "chat-a" });
+      const byName = new Map(tools.map((tool) => [tool.name, tool]));
+
+      const list = JSON.parse(await byName.get("list_cron_jobs")!.execute({}));
+      expect(list.jobs).toHaveLength(1);
+      expect(list.jobs[0]).toMatchObject({ chatId: "chat-a", prompt: "总结 A" });
+    } finally {
+      database.close();
+    }
+  });
+
   it("returns tool errors for invalid input and wrong chat deletion", async () => {
     const { database, repository } = createRepository();
     try {
