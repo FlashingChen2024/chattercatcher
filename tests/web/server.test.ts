@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDefaultConfig } from "../../src/config/schema.js";
+import { CronJobRepository } from "../../src/cron/jobs.js";
 import { openDatabase } from "../../src/db/database.js";
 import { ingestLocalFile } from "../../src/files/ingest.js";
 import { FileJobRepository } from "../../src/files/jobs.js";
@@ -59,6 +60,18 @@ describe("web server", () => {
         status: "answered",
         createdAt: "2026-04-25T08:11:00.000Z",
       });
+      new CronJobRepository(database, { now: () => new Date(2026, 4, 5, 8, 58, 0) }).create({
+        chatId: "family",
+        createdByOpenId: "mom",
+        schedule: "0 9 * * *",
+        prompt: "总结昨天群聊",
+      });
+      new CronJobRepository(database, { now: () => new Date(2026, 4, 5, 8, 58, 0) }).create({
+        chatId: "family",
+        createdByOpenId: "dad",
+        schedule: "0 10 * * *",
+        prompt: "提醒喝水",
+      });
     } finally {
       database.close();
     }
@@ -70,7 +83,7 @@ describe("web server", () => {
       const statusJson = status.json();
       expect(statusJson).toMatchObject({
         app: "ChatterCatcher",
-        data: { chats: 2, messages: 2, files: 1, episodes: 1, qaLogs: 1 },
+        data: { chats: 2, messages: 2, files: 1, episodes: 1, qaLogs: 1, cronJobs: 2 },
         rag: {
           mode: "required",
           retrieval: {
@@ -80,6 +93,11 @@ describe("web server", () => {
         },
       });
       expect(statusJson.data).toHaveProperty("qaLogs");
+      expect(statusJson.web).not.toHaveProperty("actionToken");
+      const script = await app.inject({ method: "GET", url: "/app.js" });
+      expect(script.statusCode).toBe(200);
+      const webActionToken = /let webActionToken = "([a-f0-9]+)";/.exec(script.body)?.[1];
+      expect(webActionToken).toHaveLength(64);
 
       const chats = await app.inject({ method: "GET", url: "/api/chats" });
       expect(chats.json().items.map((item: { name: string }) => item.name)).toContain("家庭群");
@@ -127,6 +145,44 @@ describe("web server", () => {
         fileName: "activity.md",
         status: "indexed",
       });
+
+      const cronJobs = await app.inject({ method: "GET", url: "/api/cron-jobs?limit=1" });
+      expect(cronJobs.statusCode).toBe(200);
+      expect(cronJobs.json().items).toHaveLength(1);
+      expect(cronJobs.json().items[0]).toMatchObject({
+        chatId: "family",
+        schedule: "0 9 * * *",
+        prompt: "总结昨天群聊",
+        status: "active",
+      });
+
+      const allCronJobs = await app.inject({ method: "GET", url: "/api/cron-jobs" });
+      expect(allCronJobs.json().items).toHaveLength(2);
+      const targetJob = allCronJobs.json().items.find((item: { prompt: string }) => item.prompt === "总结昨天群聊");
+      const unauthorizedDelete = await app.inject({ method: "DELETE", url: `/api/cron-jobs/${targetJob.id}` });
+      expect(unauthorizedDelete.statusCode).toBe(403);
+      expect(unauthorizedDelete.json()).toMatchObject({ ok: false, message: "Web 操作未授权。" });
+      const deleteResponse = await app.inject({
+        method: "DELETE",
+        url: `/api/cron-jobs/${targetJob.id}`,
+        headers: { "x-chattercatcher-web-token": webActionToken! },
+      });
+      expect(deleteResponse.statusCode).toBe(200);
+      expect(deleteResponse.json()).toMatchObject({ ok: true });
+      expect((await app.inject({ method: "GET", url: "/api/cron-jobs" })).json().items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: targetJob.id, status: "deleted" }),
+          expect.objectContaining({ prompt: "提醒喝水", status: "active" }),
+        ]),
+      );
+
+      const missingDelete = await app.inject({
+        method: "DELETE",
+        url: "/api/cron-jobs/missing-job",
+        headers: { "x-chattercatcher-web-token": webActionToken! },
+      });
+      expect(missingDelete.statusCode).toBe(404);
+      expect(missingDelete.json()).toMatchObject({ ok: false, message: "没有找到定时任务。" });
     } finally {
       await app.close();
     }
@@ -145,6 +201,15 @@ describe("web server", () => {
       expect(response.body).toContain("会话记忆");
       expect(response.body).toContain("问答日志");
       expect(response.body).toContain('id="qa-logs" class="empty">正在读取...</div>');
+      expect(response.body).toContain("定时任务");
+      expect(response.body).toContain('id="cron-jobs" class="empty">正在读取...</div>');
+      expect(response.body).toContain("/api/cron-jobs");
+      expect(response.body).toContain("data-delete-cron-job");
+      expect(response.body).toContain("正在删除定时任务");
+      expect(response.body).toContain("x-chattercatcher-web-token");
+      const script = await app.inject({ method: "GET", url: "/app.js" });
+      expect(script.body).toContain("x-chattercatcher-web-token");
+      expect(script.body).not.toContain("__WEB_ACTION_TOKEN__");
       expect(response.body).toContain("chattercatcher process episodes");
       expect(response.body).toContain("立即处理");
       expect(response.body).toContain("setInterval");
@@ -160,7 +225,13 @@ describe("web server", () => {
     config.storage.dataDir = testDir;
     const app = createWebApp(config);
     try {
-      const response = await app.inject({ method: "POST", url: "/api/process/messages" });
+      const script = await app.inject({ method: "GET", url: "/app.js" });
+      const webActionToken = /let webActionToken = "([a-f0-9]+)";/.exec(script.body)?.[1];
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/process/messages",
+        headers: { "x-chattercatcher-web-token": webActionToken! },
+      });
 
       expect(response.statusCode).toBe(200);
       expect(response.json()).toMatchObject({
@@ -169,6 +240,20 @@ describe("web server", () => {
         vectors: 0,
       });
       expect(response.json().reason).toContain("Embedding 配置不完整");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("拒绝未授权的 Web 写操作", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const app = createWebApp(config);
+    try {
+      const response = await app.inject({ method: "POST", url: "/api/process/messages" });
+
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({ status: "failed", message: "Web 操作未授权。" });
     } finally {
       await app.close();
     }

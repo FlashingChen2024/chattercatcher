@@ -109,8 +109,22 @@ describe("RAG search tools", () => {
 
     const result = await executeRagSearchTool(tool!, { query: "  端午活动什么时候  ", limit: 1.8 });
 
-    expect(retriever.retrieve).toHaveBeenCalledWith("端午活动什么时候");
+    expect(retriever.retrieve).toHaveBeenCalledWith("端午活动什么时候", undefined);
     expect(result).toEqual([evidence[0]]);
+  });
+
+  it("passes scope to retriever", async () => {
+    const retriever = createRetriever(evidence);
+    const [tool] = createRagSearchTools({
+      hybrid: retriever,
+      messages: createRetriever(),
+      episodes: createRetriever(),
+      scope: { platform: "feishu", platformChatId: "chat-a" },
+    });
+
+    await executeRagSearchTool(tool!, { query: "端午活动" });
+
+    expect(retriever.retrieve).toHaveBeenCalledWith("端午活动", { platform: "feishu", platformChatId: "chat-a" });
   });
 
   it("invalid input throws `搜索 query 必须是非空字符串。`", async () => {

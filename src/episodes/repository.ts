@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { SqliteDatabase } from "../db/database.js";
-import type { MessageSearchResult } from "../messages/types.js";
+import type { MessageSearchResult, MessageSearchScope } from "../messages/types.js";
 import { sanitizeEpisodeSummary } from "./sanitizer.js";
 
 export interface EpisodeMessage {
@@ -62,6 +62,24 @@ function escapeFtsQuery(query: string): string {
 function toMillis(value: string): number {
   const time = Date.parse(value);
   return Number.isFinite(time) ? time : 0;
+}
+
+function buildScopeWhere(scope?: MessageSearchScope): { where: string; params: string[] } {
+  const clauses: string[] = [];
+  const params: string[] = [];
+  if (scope?.platform) {
+    clauses.push("c.platform = ?");
+    params.push(scope.platform);
+  }
+  if (scope?.platformChatId) {
+    clauses.push("c.platform_chat_id = ?");
+    params.push(scope.platformChatId);
+  }
+
+  return {
+    where: clauses.length > 0 ? `AND ${clauses.join(" AND ")}` : "",
+    params,
+  };
 }
 
 export interface EpisodeListItem {
@@ -294,8 +312,9 @@ export class EpisodeRepository {
       .all(limit) as EpisodeListItem[];
   }
 
-  searchEpisodes(query: string, limit = 8): EpisodeSearchResult[] {
+  searchEpisodes(query: string, limit = 8, scope?: MessageSearchScope): EpisodeSearchResult[] {
     const ftsQuery = escapeFtsQuery(query);
+    const scopeWhere = buildScopeWhere(scope);
     return this.database
       .prepare(
         `
@@ -324,12 +343,13 @@ export class EpisodeRepository {
           JOIN memory_episodes e ON e.id = fts.episode_id
           JOIN chats c ON c.id = e.chat_id
           WHERE memory_episodes_fts MATCH ?
+          ${scopeWhere.where}
           GROUP BY e.id
           ORDER BY e.ended_at DESC
           LIMIT ?
         `,
       )
-      .all(ftsQuery, limit)
+      .all(ftsQuery, ...scopeWhere.params, limit)
       .map((row) => {
         const item = row as MessageSearchResult & {
           startedAt: string;

@@ -2,6 +2,7 @@ import type { AppConfig, AppSecrets } from "../config/schema.js";
 import type { SqliteDatabase } from "../db/database.js";
 import { EpisodeRepository } from "../episodes/repository.js";
 import type { MessageRepository } from "../messages/repository.js";
+import type { MessageSearchScope } from "../messages/types.js";
 import { createEmbeddingModel } from "../llm/openai-compatible.js";
 import { EpisodeFtsRetriever } from "./episode-retriever.js";
 import { HybridRetriever } from "./hybrid-retriever.js";
@@ -21,6 +22,7 @@ export async function createHybridRetriever(input: {
   database: SqliteDatabase;
   messages: MessageRepository;
   excludeMessageIds?: string[];
+  scope?: MessageSearchScope;
 }): Promise<{ retriever: Retriever; close: () => void }> {
   const retrievers: Retriever[] = [
     new EpisodeFtsRetriever(new EpisodeRepository(input.database)),
@@ -36,7 +38,7 @@ export async function createHybridRetriever(input: {
   }
 
   return {
-    retriever: new HybridRetriever(retrievers),
+    retriever: new HybridRetriever(retrievers, { scope: input.scope }),
     close: () => {
       for (const closer of closers) {
         closer();
@@ -51,6 +53,7 @@ export async function createAgenticRagSearchTools(input: {
   database: SqliteDatabase;
   messages: MessageRepository;
   excludeMessageIds?: string[];
+  scope?: MessageSearchScope;
 }): Promise<{ tools: RagSearchTool[]; close: () => void }> {
   const episodes = new EpisodeFtsRetriever(new EpisodeRepository(input.database));
   const messages = new MessageFtsRetriever(input.messages, { excludeMessageIds: input.excludeMessageIds });
@@ -63,7 +66,7 @@ export async function createAgenticRagSearchTools(input: {
   const hybrid = new HybridRetriever(semantic ? [episodes, messages, semantic] : [episodes, messages]);
 
   return {
-    tools: createRagSearchTools({ hybrid, messages, episodes, semantic }),
+    tools: createRagSearchTools({ hybrid, messages, episodes, semantic, scope: input.scope }),
     close: () => {},
   };
 }

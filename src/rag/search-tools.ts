@@ -1,4 +1,4 @@
-import type { Retriever } from "./retriever.js";
+import type { Retriever, RetrievalScope } from "./retriever.js";
 import type { ChatTool, EvidenceBlock } from "./types.js";
 
 export interface RagSearchTool extends ChatTool {
@@ -10,6 +10,7 @@ export interface CreateRagSearchToolsInput {
   messages: Retriever;
   episodes: Retriever;
   semantic?: Retriever;
+  scope?: RetrievalScope;
 }
 
 const searchInputSchema = {
@@ -52,18 +53,18 @@ function parseSearchInput(input: unknown): SearchInput {
   return { query, limit };
 }
 
-async function runRetriever(retriever: Retriever, input: unknown): Promise<EvidenceBlock[]> {
+async function runRetriever(retriever: Retriever, input: unknown, scope?: RetrievalScope): Promise<EvidenceBlock[]> {
   const { query, limit } = parseSearchInput(input);
-  const results = await retriever.retrieve(query);
+  const results = await retriever.retrieve(query, scope);
   return results.slice(0, limit);
 }
 
-function createSearchTool(name: string, description: string, retriever: Retriever): RagSearchTool {
+function createSearchTool(name: string, description: string, retriever: Retriever, scope?: RetrievalScope): RagSearchTool {
   return {
     name,
     description,
     inputSchema: searchInputSchema,
-    execute: (input) => runRetriever(retriever, input),
+    execute: (input) => runRetriever(retriever, input, scope),
   };
 }
 
@@ -79,16 +80,19 @@ export function createRagSearchTools(input: CreateRagSearchToolsInput): RagSearc
       "hybrid_search",
       "Search across all indexed RAG evidence using the default hybrid retrieval strategy.",
       input.hybrid,
+      input.scope,
     ),
     createSearchTool(
       "search_messages",
       "Search chat messages only when the answer likely depends on message-level evidence.",
       input.messages,
+      input.scope,
     ),
     createSearchTool(
       "search_episodes",
       "Search episode summaries only when the answer likely depends on longer-running context.",
       input.episodes,
+      input.scope,
     ),
   ];
 
@@ -98,6 +102,7 @@ export function createRagSearchTools(input: CreateRagSearchToolsInput): RagSearc
         "semantic_search",
         "Search semantic vector evidence only when broader conceptual recall is needed.",
         input.semantic,
+        input.scope,
       ),
     );
   }

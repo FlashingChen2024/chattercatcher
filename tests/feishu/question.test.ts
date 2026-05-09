@@ -168,15 +168,15 @@ describe("FeishuQuestionHandler", () => {
         toolCalls: [{ id: "call-1", name: "search_messages", input: { query: "端午活动什么时候" } }],
       },
       {
-        content: "检索完成。",
+        content: "端午活动目前是 2026/6/30。引用：老妈在 2026-04-25 16:00 说：端午活动改到 2026/6/30，以这个为准。",
         toolCalls: [],
       },
     ]);
     const model: ChatModel = {
       completeWithTools,
       async complete(messages) {
-        expect(messages[1]?.content).toContain("检索证据");
-        return "端午活动目前是 2026/6/30。[S1]";
+        expect(messages[1]?.content).toContain("端午活动什么时候？");
+        throw new Error("complete should not be called");
       },
     };
 
@@ -231,22 +231,9 @@ describe("FeishuQuestionHandler", () => {
         chatId: "oc_family",
         questionMessageId: "om_question",
         question: "端午活动什么时候？",
-        answer: "端午活动目前是 2026/6/30。[S1]",
-        citations: [
-          expect.objectContaining({
-            marker: "S1",
-            text: "端午活动改到 2026/6/30，以这个为准。",
-            source: {
-              type: "message",
-              label: "家庭群",
-              sender: "老妈",
-              timestamp: "2026-04-25T08:00:00.000Z",
-            },
-          }),
-        ],
-        retrievalDebug: {
-          evidenceCount: 1,
-        },
+        answer: "端午活动目前是 2026/6/30。引用：老妈在 2026-04-25 16:00 说：端午活动改到 2026/6/30，以这个为准。",
+        citations: [],
+        retrievalDebug: {},
         status: "answered",
         error: null,
       });
@@ -282,18 +269,11 @@ describe("FeishuQuestionHandler", () => {
         secrets,
         database,
         model: {
-          completeWithTools: createCompleteWithToolsMock([
-            {
-              content: "我先查一下相关消息。",
-              toolCalls: [{ id: "call-1", name: "search_messages", input: { query: "端午活动什么时候" } }],
-            },
-            {
-              content: "检索完成。",
-              toolCalls: [],
-            },
-          ]),
-          async complete() {
+          completeWithTools: vi.fn(async () => {
             throw new Error("模型未配置");
+          }),
+          async complete() {
+            throw new Error("complete should not be called");
           },
         },
         sender: {
@@ -366,12 +346,12 @@ describe("FeishuQuestionHandler", () => {
               toolCalls: [{ id: "call-1", name: "search_messages", input: { query: "端午活动什么时候" } }],
             },
             {
-              content: "检索完成。",
+              content: "端午活动目前是 2026/6/30。",
               toolCalls: [],
             },
           ]),
           async complete() {
-            return "端午活动目前是 2026/6/30。[S1]";
+            throw new Error("complete should not be called");
           },
         },
         sender: {

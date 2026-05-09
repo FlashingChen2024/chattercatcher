@@ -71,6 +71,53 @@ describe("EpisodeRepository", () => {
     }
   });
 
+  it("检索会话记忆可以限制到指定平台群聊", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const database = openDatabase(config);
+    const messages = new MessageRepository(database);
+    const episodes = new EpisodeRepository(database);
+
+    try {
+      messages.ingest({
+        platform: "feishu",
+        platformChatId: "chat-a",
+        chatName: "A 群",
+        platformMessageId: "a-1",
+        senderId: "alice",
+        senderName: "Alice",
+        messageType: "text",
+        text: "端午活动 A 群安排。",
+        sentAt: "2026-05-01T10:00:00.000Z",
+      });
+      messages.ingest({
+        platform: "feishu",
+        platformChatId: "chat-b",
+        chatName: "B 群",
+        platformMessageId: "b-1",
+        senderId: "bob",
+        senderName: "Bob",
+        messageType: "text",
+        text: "端午活动 B 群安排。",
+        sentAt: "2026-05-01T10:00:00.000Z",
+      });
+      await episodes.summarizeReadyWindows({
+        now: new Date("2026-05-01T10:04:00.000Z"),
+        quietMs: 2 * 60 * 1000,
+        windowMs: 10 * 60 * 1000,
+        summarize: async (window) => `${window.chatName} activity-memory-token 会话记忆。`,
+      });
+
+      const results = episodes.searchEpisodes("activity-memory-token", 8, { platform: "feishu", platformChatId: "chat-a" });
+
+      expect(results).toHaveLength(1);
+      expect(results[0]?.text).toContain("A 群");
+      expect(results[0]?.text).not.toContain("B 群");
+    } finally {
+      database.close();
+    }
+  });
+
   it("按结束时间倒序列出会话记忆并统计数量", async () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;

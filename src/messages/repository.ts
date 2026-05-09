@@ -7,6 +7,7 @@ import type {
   FileRecord,
   IngestMessageInput,
   MessageSearchResult,
+  MessageSearchScope,
 } from "./types.js";
 
 function nowIso(): string {
@@ -56,6 +57,24 @@ function buildSearchTerms(query: string): string[] {
   }
 
   return [trimmed];
+}
+
+function buildScopeWhere(scope?: MessageSearchScope): { where: string; params: string[] } {
+  const clauses: string[] = [];
+  const params: string[] = [];
+  if (scope?.platform) {
+    clauses.push("m.platform = ?");
+    params.push(scope.platform);
+  }
+  if (scope?.platformChatId) {
+    clauses.push("c.platform_chat_id = ?");
+    params.push(scope.platformChatId);
+  }
+
+  return {
+    where: clauses.length > 0 ? `AND ${clauses.join(" AND ")}` : "",
+    params,
+  };
 }
 
 function parseRawPayload(value: string): Record<string, unknown> {
@@ -295,10 +314,11 @@ export class MessageRepository {
       .all(...messageIds, limit) as MessageSearchResult[];
   }
 
-  searchMessages(query: string, limit = 8, options: { excludeMessageIds?: string[] } = {}): MessageSearchResult[] {
+  searchMessages(query: string, limit = 8, options: { excludeMessageIds?: string[]; scope?: MessageSearchScope } = {}): MessageSearchResult[] {
     const ftsQuery = escapeFtsQuery(query);
     const excludedIds = options.excludeMessageIds ?? [];
     const excludedWhere = excludedIds.length > 0 ? `AND fts.message_id NOT IN (${excludedIds.map(() => "?").join(", ")})` : "";
+    const scope = buildScopeWhere(options.scope);
     const ftsResults = this.database
       .prepare(
         `
@@ -318,11 +338,12 @@ export class MessageRepository {
         JOIN chats c ON c.id = m.chat_id
         WHERE message_chunks_fts MATCH ?
         ${excludedWhere}
+        ${scope.where}
         ORDER BY bm25(message_chunks_fts)
         LIMIT ?
       `,
       )
-      .all(ftsQuery, ...excludedIds, limit) as MessageSearchResult[];
+      .all(ftsQuery, ...excludedIds, ...scope.params, limit) as MessageSearchResult[];
 
     if (ftsResults.length > 0) {
       return ftsResults;
@@ -356,11 +377,12 @@ export class MessageRepository {
         JOIN chats c ON c.id = m.chat_id
         WHERE (${where})
         ${likeExcludedWhere}
+        ${scope.where}
         ORDER BY m.sent_at DESC
         LIMIT ?
       `,
       )
-      .all(...params, ...excludedIds, limit) as MessageSearchResult[];
+      .all(...params, ...excludedIds, ...scope.params, limit) as MessageSearchResult[];
   }
 
   getChatCount(): number {
