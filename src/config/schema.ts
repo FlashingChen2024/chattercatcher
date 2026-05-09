@@ -64,6 +64,12 @@ export const appSecretsSchema = z.object({
       apiKey: z.string().default(""),
     }),
   ),
+  web: z.preprocess(
+    (value) => value ?? {},
+    z.object({
+      actionToken: z.string().default(""),
+    }),
+  ),
 });
 
 export type AppConfig = z.infer<typeof appConfigSchema>;
@@ -88,5 +94,6 @@ export function createDefaultSecrets(): AppSecrets {
     llm: {},
     embedding: {},
     multimodal: {},
+    web: {},
   });
 }

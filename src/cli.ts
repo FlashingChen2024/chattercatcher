@@ -258,6 +258,8 @@ async function startGatewayForegroundCommand(): Promise<void> {
   });
 
   const database = openDatabase(config);
+  const chatModel = createChatModel(config, secrets);
+  const sender = FeishuMessageSender.fromConfig(config, secrets);
   const vectorStore = hasEmbeddingConfig(config, secrets)
     ? new SqliteVectorStore(database, { model: config.embedding.model })
     : null;
@@ -277,7 +279,7 @@ async function startGatewayForegroundCommand(): Promise<void> {
       : undefined,
     episodeProcessor: {
       database,
-      model: createChatModel(config, secrets),
+      model: chatModel,
     },
     imageMultimodalProcessor:
       config.multimodal.baseUrl && config.multimodal.model && secrets.multimodal.apiKey
@@ -289,12 +291,17 @@ async function startGatewayForegroundCommand(): Promise<void> {
     indexingProcessor: {
       database,
     },
+    cronJobProcessor: {
+      database,
+      model: chatModel,
+      sender,
+    },
     questionHandler: new FeishuQuestionHandler({
       config,
       secrets,
       database,
-      sender: FeishuMessageSender.fromConfig(config, secrets),
-      model: createChatModel(config, secrets),
+      sender,
+      model: chatModel,
     }),
   });
 

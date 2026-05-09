@@ -1,3 +1,4 @@
+import type { MessageSearchScope } from "../messages/types.js";
 import { cosineSimilarity } from "./embedding.js";
 import type { EvidenceBlock } from "./types.js";
 
@@ -13,7 +14,7 @@ export interface VectorSearchResult extends EvidenceBlock {
 
 export interface VectorStore {
   upsert(records: VectorRecord[]): Promise<void>;
-  search(vector: number[], limit: number): Promise<VectorSearchResult[]>;
+  search(vector: number[], limit: number, scope?: MessageSearchScope): Promise<VectorSearchResult[]>;
 }
 
 export class MemoryVectorStore implements VectorStore {
@@ -25,7 +26,7 @@ export class MemoryVectorStore implements VectorStore {
     }
   }
 
-  async search(vector: number[], limit: number): Promise<VectorSearchResult[]> {
+  async search(vector: number[], limit: number, _scope?: MessageSearchScope): Promise<VectorSearchResult[]> {
     return [...this.records.values()]
       .map((record) => {
         const vectorScore = cosineSimilarity(vector, record.vector);

@@ -1,8 +1,9 @@
-import type { Retriever } from "./retriever.js";
+import type { Retriever, RetrievalScope } from "./retriever.js";
 import type { EvidenceBlock } from "./types.js";
 
 export interface HybridRetrieverOptions {
   limit?: number;
+  scope?: RetrievalScope;
 }
 
 function normalizeScore(score: number): number {
@@ -29,8 +30,9 @@ export class HybridRetriever implements Retriever {
     private readonly options: HybridRetrieverOptions = {},
   ) {}
 
-  async retrieve(question: string): Promise<EvidenceBlock[]> {
-    const results = await Promise.all(this.retrievers.map((retriever) => retriever.retrieve(question)));
+  async retrieve(question: string, scope?: RetrievalScope): Promise<EvidenceBlock[]> {
+    const effectiveScope = scope ?? this.options.scope;
+    const results = await Promise.all(this.retrievers.map((retriever) => retriever.retrieve(question, effectiveScope)));
     const merged = new Map<string, EvidenceBlock>();
 
     for (const evidenceList of results) {

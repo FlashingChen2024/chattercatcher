@@ -1,7 +1,10 @@
+import type { MessageSearchScope } from "../messages/types.js";
 import type { EvidenceBlock } from "./types.js";
 
+export type RetrievalScope = MessageSearchScope;
+
 export interface Retriever {
-  retrieve(question: string): Promise<EvidenceBlock[]>;
+  retrieve(question: string, scope?: RetrievalScope): Promise<EvidenceBlock[]>;
 }
 
 export class EmptyRetriever implements Retriever {

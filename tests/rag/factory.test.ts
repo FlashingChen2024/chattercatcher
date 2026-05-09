@@ -163,4 +163,54 @@ describe("createHybridRetriever", () => {
       database.close();
     }
   });
+
+  it("混合检索可以限制到指定平台群聊", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const secrets = createDefaultSecrets();
+    const database = openDatabase(config);
+    const messages = new MessageRepository(database);
+
+    try {
+      messages.ingest({
+        platform: "feishu",
+        platformChatId: "chat-a",
+        chatName: "A 群",
+        platformMessageId: "a-1",
+        senderId: "alice",
+        senderName: "Alice",
+        messageType: "text",
+        text: "端午活动在 A 群改到 2026/6/30。",
+        sentAt: "2026-04-25T08:00:00.000Z",
+      });
+      messages.ingest({
+        platform: "feishu",
+        platformChatId: "chat-b",
+        chatName: "B 群",
+        platformMessageId: "b-1",
+        senderId: "bob",
+        senderName: "Bob",
+        messageType: "text",
+        text: "端午活动在 B 群改到 2026/7/1。",
+        sentAt: "2026-04-25T09:00:00.000Z",
+      });
+
+      const { retriever, close } = await createHybridRetriever({
+        config,
+        secrets,
+        database,
+        messages,
+        scope: { platform: "feishu", platformChatId: "chat-a" },
+      });
+
+      const results = await retriever.retrieve("端午活动");
+      close();
+
+      expect(results).toHaveLength(1);
+      expect(results[0]?.text).toContain("A 群");
+      expect(results[0]?.text).not.toContain("B 群");
+    } finally {
+      database.close();
+    }
+  });
 });

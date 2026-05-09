@@ -111,6 +111,45 @@ describe("message repository", () => {
     }
   });
 
+  it("检索可以限制到指定平台群聊", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const database = openDatabase(config);
+    try {
+      const messages = new MessageRepository(database);
+      messages.ingest({
+        platform: "feishu",
+        platformChatId: "chat-a",
+        chatName: "A 群",
+        platformMessageId: "a-1",
+        senderId: "alice",
+        senderName: "Alice",
+        messageType: "text",
+        text: "端午活动在 A 群改到 2026/6/30。",
+        sentAt: "2026-04-25T08:00:00.000Z",
+      });
+      messages.ingest({
+        platform: "feishu",
+        platformChatId: "chat-b",
+        chatName: "B 群",
+        platformMessageId: "b-1",
+        senderId: "bob",
+        senderName: "Bob",
+        messageType: "text",
+        text: "端午活动在 B 群改到 2026/7/1。",
+        sentAt: "2026-04-25T09:00:00.000Z",
+      });
+
+      const results = messages.searchMessages("端午活动", 8, { scope: { platform: "feishu", platformChatId: "chat-a" } });
+
+      expect(results).toHaveLength(1);
+      expect(results[0]?.text).toContain("A 群");
+      expect(results[0]?.text).not.toContain("B 群");
+    } finally {
+      database.close();
+    }
+  });
+
   it("为有意义图片转述创建可检索的派生文字消息", async () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;

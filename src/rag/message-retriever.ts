@@ -1,7 +1,7 @@
 import { MessageRepository } from "../messages/repository.js";
 import type { MessageSearchResult } from "../messages/types.js";
 import type { EvidenceBlock } from "./types.js";
-import type { Retriever } from "./retriever.js";
+import type { Retriever, RetrievalScope } from "./retriever.js";
 
 function toEvidenceSource(result: MessageSearchResult): EvidenceBlock["source"] {
   if (result.messageType === "file") {
@@ -26,9 +26,10 @@ export class MessageFtsRetriever implements Retriever {
     private readonly options: { excludeMessageIds?: string[] } = {},
   ) {}
 
-  async retrieve(question: string): Promise<EvidenceBlock[]> {
+  async retrieve(question: string, scope?: RetrievalScope): Promise<EvidenceBlock[]> {
     const results = this.messages.searchMessages(question, 8, {
       excludeMessageIds: this.options.excludeMessageIds,
+      scope,
     });
 
     return results.map((result) => ({

@@ -56,6 +56,11 @@ export interface CreateImageSummaryMessageInput {
   generatedAt: string;
 }
 
+export interface MessageSearchScope {
+  platform?: string;
+  platformChatId?: string;
+}
+
 export interface MessageSearchResult {
   chunkId: string;
   messageId: string;

@@ -104,6 +104,35 @@ describe("createFeishuGateway", () => {
     expect(indexingScheduler.stop).toHaveBeenCalledTimes(1);
   });
 
+  it("Gateway 启动成功后启动定时任务调度器，停止时关闭调度器", async () => {
+    const config = createDefaultConfig();
+    config.feishu.appId = "cli_app_id";
+    const secrets = createDefaultSecrets();
+    secrets.feishu.appSecret = "app_secret";
+    const cronJobScheduler = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      runDueNow: vi.fn(async () => undefined),
+    };
+
+    const runtime = createFeishuGateway({
+      config,
+      secrets,
+      ingestor: {} as GatewayIngestor,
+      cronJobScheduler,
+      wsClientFactory: () => ({
+        async start() {},
+        close() {},
+      }),
+    });
+
+    await runtime.start();
+    runtime.stop();
+
+    expect(cronJobScheduler.start).toHaveBeenCalledTimes(1);
+    expect(cronJobScheduler.stop).toHaveBeenCalledTimes(1);
+  });
+
   it("长连接启动失败时关闭索引调度器", async () => {
     const config = createDefaultConfig();
     config.feishu.appId = "cli_app_id";
