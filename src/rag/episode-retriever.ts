@@ -1,7 +1,7 @@
 import { EpisodeRepository } from "../episodes/repository.js";
 import type { EpisodeSearchResult } from "../episodes/repository.js";
 import type { EvidenceBlock } from "./types.js";
-import type { Retriever } from "./retriever.js";
+import type { Retriever, RetrievalScope } from "./retriever.js";
 
 function toEpisodeEvidence(result: EpisodeSearchResult): EvidenceBlock {
   return {
@@ -21,7 +21,7 @@ function toEpisodeEvidence(result: EpisodeSearchResult): EvidenceBlock {
 export class EpisodeFtsRetriever implements Retriever {
   constructor(private readonly episodes: EpisodeRepository) {}
 
-  async retrieve(question: string): Promise<EvidenceBlock[]> {
-    return this.episodes.searchEpisodes(question, 8).map(toEpisodeEvidence);
+  async retrieve(question: string, scope?: RetrievalScope): Promise<EvidenceBlock[]> {
+    return this.episodes.searchEpisodes(question, 8, scope).map(toEpisodeEvidence);
   }
 }

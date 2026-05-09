@@ -1,4 +1,5 @@
 import type { SqliteDatabase } from "../db/database.js";
+import type { MessageSearchScope } from "../messages/types.js";
 import { cosineSimilarity } from "./embedding.js";
 import type { EvidenceSource } from "./types.js";
 import type { VectorRecord, VectorSearchResult, VectorStore } from "./vector-store.js";
@@ -27,6 +28,24 @@ function toEvidenceSource(row: SearchRow): EvidenceSource {
     label: row.chatName,
     sender: row.senderName,
     timestamp: row.sentAt,
+  };
+}
+
+function buildScopeWhere(scope?: MessageSearchScope): { where: string; params: string[] } {
+  const clauses: string[] = [];
+  const params: string[] = [];
+  if (scope?.platform) {
+    clauses.push("m.platform = ?");
+    params.push(scope.platform);
+  }
+  if (scope?.platformChatId) {
+    clauses.push("c.platform_chat_id = ?");
+    params.push(scope.platformChatId);
+  }
+
+  return {
+    where: clauses.length > 0 ? `AND ${clauses.join(" AND ")}` : "",
+    params,
   };
 }
 
@@ -67,11 +86,12 @@ export class SqliteVectorStore implements VectorStore {
     transaction(records);
   }
 
-  async search(vector: number[], limit: number): Promise<VectorSearchResult[]> {
+  async search(vector: number[], limit: number, scope?: MessageSearchScope): Promise<VectorSearchResult[]> {
     if (limit <= 0) {
       return [];
     }
 
+    const scopeWhere = buildScopeWhere(scope);
     const rows = this.database
       .prepare(
         `
@@ -87,9 +107,10 @@ export class SqliteVectorStore implements VectorStore {
         JOIN messages m ON m.id = mc.message_id
         JOIN chats c ON c.id = m.chat_id
         WHERE e.model = ?
+        ${scopeWhere.where}
       `,
       )
-      .all(this.options.model) as SearchRow[];
+      .all(this.options.model, ...scopeWhere.params) as SearchRow[];
 
     return rows
       .flatMap((row) => {

@@ -173,4 +173,221 @@ describe("FeishuQuestionHandler cron tools", () => {
       database.close();
     }
   });
+
+  it("lists cron jobs only from the current chat through Feishu tool loop", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    config.feishu.botOpenId = "bot-open-id";
+    const database = openDatabase(config);
+    const secrets = createDefaultSecrets();
+    const sent: string[] = [];
+    const sender: MessageSender = {
+      async sendTextToChat(_chatId, text) {
+        sent.push(text);
+      },
+      async replyTextToMessage(_messageId, text) {
+        sent.push(text);
+      },
+    };
+    const model = createToolLoopModel([
+      {
+        content: "我来查看定时任务。",
+        toolCalls: [{ id: "call-1", name: "list_cron_jobs", input: {} }],
+      },
+      async (messages) => {
+        const toolMessage = messages.at(-1);
+        expect(toolMessage).toMatchObject({ role: "tool", toolCallId: "call-1" });
+        expect(toolMessage?.content).toContain('\"prompt\":\"总结 chat-a\"');
+        expect(toolMessage?.content).not.toContain("总结 chat-b");
+        return { content: "当前群有 1 个定时任务。", toolCalls: [] };
+      },
+    ]);
+
+    try {
+      const repository = new CronJobRepository(database);
+      repository.create({ chatId: "chat-a", schedule: "0 9 * * *", prompt: "总结 chat-a" });
+      repository.create({ chatId: "chat-b", schedule: "0 10 * * *", prompt: "总结 chat-b" });
+
+      const handler = new FeishuQuestionHandler({ config, secrets, database, model, sender });
+      await handler.handle({
+        event: {
+          sender: {
+            sender_id: {
+              open_id: "user-a",
+            },
+          },
+          message: {
+            chat_id: "chat-a",
+            message_id: "message-a",
+            message_type: "text",
+            content: JSON.stringify({ text: "@bot 查看定时任务" }),
+            mentions: [{ key: "@bot", name: "bot", id: { open_id: "bot-open-id" } }],
+          },
+        },
+      });
+
+      expect(sent).toContain("当前群有 1 个定时任务。");
+    } finally {
+      database.close();
+    }
+  });
+
+  it("passes unknown tool errors back into the Feishu tool loop", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    config.feishu.botOpenId = "bot-open-id";
+    const database = openDatabase(config);
+    const secrets = createDefaultSecrets();
+    const sent: string[] = [];
+    const sender: MessageSender = {
+      async sendTextToChat(_chatId, text) {
+        sent.push(text);
+      },
+      async replyTextToMessage(_messageId, text) {
+        sent.push(text);
+      },
+    };
+    const model = createToolLoopModel([
+      {
+        content: "我来调用工具。",
+        toolCalls: [{ id: "call-1", name: "unknown_tool", input: {} }],
+      },
+      async (messages) => {
+        const toolMessage = messages.at(-1);
+        expect(toolMessage).toMatchObject({ role: "tool", toolCallId: "call-1" });
+        expect(toolMessage?.content).toContain("未知工具：unknown_tool");
+        return { content: "工具不存在，无法完成。", toolCalls: [] };
+      },
+    ]);
+
+    try {
+      const handler = new FeishuQuestionHandler({ config, secrets, database, model, sender });
+      await handler.handle({
+        event: {
+          sender: {
+            sender_id: {
+              open_id: "user-a",
+            },
+          },
+          message: {
+            chat_id: "chat-a",
+            message_id: "message-a",
+            message_type: "text",
+            content: JSON.stringify({ text: "@bot 调用未知工具" }),
+            mentions: [{ key: "@bot", name: "bot", id: { open_id: "bot-open-id" } }],
+          },
+        },
+      });
+
+      expect(sent).toContain("工具不存在，无法完成。");
+    } finally {
+      database.close();
+    }
+  });
+
+  it("stops cleanly when the Feishu tool loop reaches its model turn limit", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    config.feishu.botOpenId = "bot-open-id";
+    const database = openDatabase(config);
+    const secrets = createDefaultSecrets();
+    const sent: string[] = [];
+    const sender: MessageSender = {
+      async sendTextToChat(_chatId, text) {
+        sent.push(text);
+      },
+      async replyTextToMessage(_messageId, text) {
+        sent.push(text);
+      },
+    };
+    const model = createToolLoopModel([
+      ...Array.from({ length: 4 }, (_item, index) => ({
+        content: "继续查看定时任务。",
+        toolCalls: [{ id: `call-${index + 1}`, name: "list_cron_jobs", input: {} }],
+      })),
+      {
+        content: "不应该继续调用模型。",
+        toolCalls: [],
+      },
+    ]);
+
+    try {
+      const handler = new FeishuQuestionHandler({ config, secrets, database, model, sender });
+      await handler.handle({
+        event: {
+          sender: {
+            sender_id: {
+              open_id: "user-a",
+            },
+          },
+          message: {
+            chat_id: "chat-a",
+            message_id: "message-a",
+            message_type: "text",
+            content: JSON.stringify({ text: "@bot 一直查看定时任务" }),
+            mentions: [{ key: "@bot", name: "bot", id: { open_id: "bot-open-id" } }],
+          },
+        },
+      });
+
+      expect(sent).toContain("定时任务操作已提交，但模型没有生成最终回复。");
+    } finally {
+      database.close();
+    }
+  });
+
+  it("stops cleanly when the Feishu tool loop reaches its tool call limit", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    config.feishu.botOpenId = "bot-open-id";
+    const database = openDatabase(config);
+    const secrets = createDefaultSecrets();
+    const sent: string[] = [];
+    const sender: MessageSender = {
+      async sendTextToChat(_chatId, text) {
+        sent.push(text);
+      },
+      async replyTextToMessage(_messageId, text) {
+        sent.push(text);
+      },
+    };
+    const model = createToolLoopModel([
+      {
+        content: "继续查看定时任务。",
+        toolCalls: Array.from({ length: 9 }, (_item, index) => ({
+          id: `call-${index + 1}`,
+          name: "list_cron_jobs",
+          input: {},
+        })),
+      },
+      {
+        content: "不应该继续调用模型。",
+        toolCalls: [],
+      },
+    ]);
+
+    try {
+      const handler = new FeishuQuestionHandler({ config, secrets, database, model, sender });
+      await handler.handle({
+        event: {
+          sender: {
+            sender_id: {
+              open_id: "user-a",
+            },
+          },
+          message: {
+            chat_id: "chat-a",
+            message_id: "message-a",
+            message_type: "text",
+            content: JSON.stringify({ text: "@bot 连续查看很多次定时任务" }),
+            mentions: [{ key: "@bot", name: "bot", id: { open_id: "bot-open-id" } }],
+          },
+        },
+      });
+
+      expect(sent).toContain("工具调用次数已达到上限，请缩小请求后重试。");
+    } finally {
+      database.close();
+    }
+  });
 });

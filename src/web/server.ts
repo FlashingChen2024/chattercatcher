@@ -1,6 +1,8 @@
+import crypto from "node:crypto";
 import Fastify, { type FastifyInstance } from "fastify";
-import { loadSecrets } from "../config/store.js";
+import { loadSecrets, saveSecrets } from "../config/store.js";
 import type { AppConfig } from "../config/schema.js";
+import { CronJobRepository } from "../cron/jobs.js";
 import { openDatabase } from "../db/database.js";
 import { FileJobRepository } from "../files/jobs.js";
 import { EpisodeRepository } from "../episodes/repository.js";
@@ -156,6 +158,10 @@ function buildHtml(): string {
             <div id="file-jobs" class="empty">正在读取...</div>
           </section>
           <section>
+            <h2>定时任务</h2>
+            <div id="cron-jobs" class="empty">正在读取...</div>
+          </section>
+          <section>
             <h2>本地操作</h2>
             <p><code>chattercatcher settings</code> 修改配置。</p>
             <p><code>chattercatcher files add &lt;path...&gt;</code> 导入文本、DOCX 或 PDF 文件。</p>
@@ -171,9 +177,12 @@ function buildHtml(): string {
       const chats = document.querySelector("#chats");
       const files = document.querySelector("#files");
       const fileJobs = document.querySelector("#file-jobs");
+      const cronJobs = document.querySelector("#cron-jobs");
       const qaLogs = document.querySelector("#qa-logs");
       const processMessages = document.querySelector("#process-messages");
       const actionStatus = document.querySelector("#action-status");
+
+      let webActionToken = "__WEB_ACTION_TOKEN__";
 
       function fmt(value) {
         return value == null || value === "" ? "-" : String(value);
@@ -363,6 +372,36 @@ function buildHtml(): string {
         \`;
       }
 
+      function renderCronJobs(items) {
+        if (items.length === 0) {
+          cronJobs.className = "empty";
+          cronJobs.textContent = "还没有定时任务。可在飞书群里 @ 机器人创建。";
+          return;
+        }
+        cronJobs.className = "";
+        cronJobs.innerHTML = \`
+          <table>
+            <thead><tr><th>任务</th><th>状态</th></tr></thead>
+            <tbody>
+              \${items.map((item) => \`
+                <tr>
+                  <td>
+                    <div>\${escapeHtml(item.schedule)}</div>
+                    <div class="message" title="\${escapeHtml(item.prompt)}">\${escapeHtml(item.prompt)}</div>
+                    <div class="path" title="\${escapeHtml(item.id)}">ID: \${escapeHtml(item.id)}</div>
+                    <div class="path" title="\${escapeHtml(item.chatId)}">群: \${escapeHtml(item.chatId)}</div>
+                    <div class="path">下次: \${escapeHtml(formatDateTime(item.nextRunAt))}</div>
+                    <div class="path" title="\${escapeHtml(item.lastError || "")}">\${escapeHtml(item.lastError || "")}</div>
+                    \${item.status === "active" ? \`<button type="button" data-delete-cron-job="\${escapeHtml(item.id)}">删除</button>\` : ""}
+                  </td>
+                  <td>\${escapeHtml(item.status)}</td>
+                </tr>
+              \`).join("")}
+            </tbody>
+          </table>
+        \`;
+      }
+
       function renderQaLogs(items) {
         if (items.length === 0) {
           qaLogs.className = "empty";
@@ -392,7 +431,7 @@ function buildHtml(): string {
       }
 
       async function load() {
-        const [status, recent, episodeList, chatList, fileList, jobList, qaLogList] = await Promise.all([
+        const [status, recent, episodeList, chatList, fileList, jobList, qaLogList, cronJobList] = await Promise.all([
           fetch("/api/status").then((response) => response.json()),
           fetch("/api/messages/recent?limit=20").then((response) => response.json()),
           fetch("/api/episodes?limit=10").then((response) => response.json()),
@@ -400,6 +439,7 @@ function buildHtml(): string {
           fetch("/api/files").then((response) => response.json()),
           fetch("/api/file-jobs").then((response) => response.json()),
           fetch("/api/qa-logs?limit=10").then((response) => response.json()),
+          fetch("/api/cron-jobs").then((response) => response.json()),
         ]);
         renderMetrics(status);
         renderMessages(recent.items);
@@ -408,13 +448,17 @@ function buildHtml(): string {
         renderFiles(fileList.items);
         renderFileJobs(jobList.items);
         renderQaLogs(qaLogList.items);
+        renderCronJobs(cronJobList.items);
       }
 
       async function processNow() {
         processMessages.disabled = true;
         actionStatus.textContent = "正在处理消息索引...";
         try {
-          const response = await fetch("/api/process/messages", { method: "POST" });
+          const response = await fetch("/api/process/messages", {
+            method: "POST",
+            headers: { "x-chattercatcher-web-token": webActionToken },
+          });
           const result = await response.json();
           if (!response.ok) {
             actionStatus.textContent = result.message || "处理失败。";
@@ -434,6 +478,28 @@ function buildHtml(): string {
         }
       }
 
+      document.addEventListener("click", async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        const id = target.dataset.deleteCronJob;
+        if (!id) return;
+        target.setAttribute("disabled", "disabled");
+        actionStatus.textContent = "正在删除定时任务...";
+        try {
+          const response = await fetch(\`/api/cron-jobs/\${encodeURIComponent(id)}\`, {
+            method: "DELETE",
+            headers: { "x-chattercatcher-web-token": webActionToken },
+          });
+          const result = await response.json();
+          actionStatus.textContent = result.ok ? "定时任务已删除。" : result.message || "删除失败。";
+          await load();
+        } catch (error) {
+          actionStatus.textContent = error instanceof Error ? error.message : String(error);
+        } finally {
+          target.removeAttribute("disabled");
+        }
+      });
+
       processMessages.addEventListener("click", () => void processNow());
       void load();
       setInterval(() => {
@@ -442,6 +508,7 @@ function buildHtml(): string {
         }
       }, 5000);
     </script>
+    <script src="/app.js"></script>
   </body>
 </html>`;
 }
@@ -451,6 +518,24 @@ function parseLimit(value: string | undefined, fallback: number, max: number): n
   return Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), max) : fallback;
 }
 
+function getWebActionToken(secrets: Awaited<ReturnType<typeof loadSecrets>>): string {
+  return secrets.web.actionToken;
+}
+
+function readHeader(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function isAuthorizedWebAction(request: { headers: Record<string, string | string[] | undefined> }, token: string): boolean {
+  const provided = readHeader(request.headers["x-chattercatcher-web-token"]);
+  return provided === token;
+}
+
+function extractInlineScript(html: string): string {
+  const match = /<script>([\s\S]*)<\/script>/.exec(html);
+  return match?.[1] ?? "";
+}
+
 export function createWebApp(config: AppConfig): FastifyInstance {
   const app = Fastify({ logger: false });
   const database = openDatabase(config);
@@ -458,32 +543,46 @@ export function createWebApp(config: AppConfig): FastifyInstance {
   const episodes = new EpisodeRepository(database);
   const fileJobs = new FileJobRepository(database);
   const qaLogs = new QaLogRepository(database);
+  const cronJobs = new CronJobRepository(database);
+  let webActionToken = "";
+  const tokenReady = (async () => {
+    const secrets = await loadSecrets();
+    if (!secrets.web.actionToken) {
+      secrets.web.actionToken = crypto.randomBytes(32).toString("hex");
+      await saveSecrets(secrets);
+    }
+    webActionToken = getWebActionToken(secrets);
+  })();
 
   app.addHook("onClose", async () => {
     database.close();
   });
 
-  app.get("/api/status", async () => ({
-    app: "ChatterCatcher",
-    gateway: getGatewayStatus(config),
-    data: {
-      chats: messages.getChatCount(),
-      messages: messages.getMessageCount(),
-      episodes: episodes.getEpisodeCount(),
-      files: messages.listFiles(1_000).length,
-      qaLogs: qaLogs.getCount(),
-    },
-    rag: {
-      mode: "required",
-      note: "问答必须先检索证据，禁止全量上下文堆叠。",
-      retrieval: {
-        keyword: "SQLite FTS5",
-        vector: "SQLite embedding",
-        hybrid: true,
+  app.get("/api/status", async () => {
+    await tokenReady;
+    return {
+      app: "ChatterCatcher",
+      gateway: getGatewayStatus(config),
+      data: {
+        chats: messages.getChatCount(),
+        messages: messages.getMessageCount(),
+        episodes: episodes.getEpisodeCount(),
+        files: messages.listFiles(1_000).length,
+        qaLogs: qaLogs.getCount(),
+        cronJobs: cronJobs.list(1_000).length,
       },
-    },
-    web: config.web,
-  }));
+      rag: {
+        mode: "required",
+        note: "问答必须先检索证据，禁止全量上下文堆叠。",
+        retrieval: {
+          keyword: "SQLite FTS5",
+          vector: "SQLite embedding",
+          hybrid: true,
+        },
+      },
+      web: config.web,
+    };
+  });
 
   app.get("/api/chats", async () => ({
     items: messages.listChats(),
@@ -525,7 +624,38 @@ export function createWebApp(config: AppConfig): FastifyInstance {
     };
   });
 
-  app.post("/api/process/messages", async (_request, reply) => {
+  app.get("/api/cron-jobs", async (request) => {
+    const limit = parseLimit((request.query as { limit?: string }).limit, 50, 200);
+    return {
+      items: cronJobs.list(limit),
+    };
+  });
+
+  app.delete("/api/cron-jobs/:id", async (request, reply) => {
+    await tokenReady;
+    if (!isAuthorizedWebAction(request, webActionToken)) {
+      reply.code(403);
+      return { ok: false, message: "Web 操作未授权。" };
+    }
+
+    const id = (request.params as { id: string }).id;
+    const job = cronJobs.get(id);
+    if (!job) {
+      reply.code(404);
+      return { ok: false, message: "没有找到定时任务。" };
+    }
+
+    const ok = cronJobs.deleteByChat(id, job.chatId);
+    return { ok };
+  });
+
+  app.post("/api/process/messages", async (request, reply) => {
+    await tokenReady;
+    if (!isAuthorizedWebAction(request, webActionToken)) {
+      reply.code(403);
+      return { status: "failed", message: "Web 操作未授权。" };
+    }
+
     try {
       return await processMessagesNow({
         config,
@@ -540,6 +670,12 @@ export function createWebApp(config: AppConfig): FastifyInstance {
         message: error instanceof Error ? error.message : String(error),
       };
     }
+  });
+
+  app.get("/app.js", async (_request, reply) => {
+    await tokenReady;
+    reply.type("application/javascript; charset=utf-8");
+    return extractInlineScript(buildHtml()).replaceAll("__WEB_ACTION_TOKEN__", webActionToken);
   });
 
   app.get("/", async (_request, reply) => {

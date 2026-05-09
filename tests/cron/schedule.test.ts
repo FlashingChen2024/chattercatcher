@@ -34,6 +34,9 @@ describe("cron schedule utility", () => {
     expect(matchesCronSchedule("*/10 * * * *", new Date(2026, 4, 5, 9, 20, 0))).toBe(true);
     expect(matchesCronSchedule("5,35 * * * *", new Date(2026, 4, 5, 9, 35, 0))).toBe(true);
     expect(matchesCronSchedule("5,35 * * * *", new Date(2026, 4, 5, 9, 36, 0))).toBe(false);
+    expect(matchesCronSchedule("0 9 1 * 1", new Date(2026, 5, 1, 9, 0, 0))).toBe(true);
+    expect(matchesCronSchedule("0 9 1 * 1", new Date(2026, 5, 8, 9, 0, 0))).toBe(true);
+    expect(matchesCronSchedule("0 9 1 * 1", new Date(2026, 5, 2, 9, 0, 0))).toBe(false);
   });
 
   it("calculates the next matching minute after a reference time", () => {
@@ -48,6 +51,9 @@ describe("cron schedule utility", () => {
     ]);
     expect(localParts(getNextCronRun("0 0 1 1 *", new Date(2027, 0, 1, 0, 1, 0))!)).toEqual([
       2028, 1, 1, 0, 0,
+    ]);
+    expect(localParts(getNextCronRun("0 9 1 * 1", new Date(2026, 5, 2, 9, 0, 0))!)).toEqual([
+      2026, 6, 8, 9, 0,
     ]);
   });
 

@@ -269,18 +269,11 @@ describe("FeishuQuestionHandler", () => {
         secrets,
         database,
         model: {
-          completeWithTools: createCompleteWithToolsMock([
-            {
-              content: "我先查一下相关消息。",
-              toolCalls: [{ id: "call-1", name: "search_messages", input: { query: "端午活动什么时候" } }],
-            },
-            {
-              content: "暂时无法回答：模型未配置",
-              toolCalls: [],
-            },
-          ]),
-          async complete() {
+          completeWithTools: vi.fn(async () => {
             throw new Error("模型未配置");
+          }),
+          async complete() {
+            throw new Error("complete should not be called");
           },
         },
         sender: {
@@ -312,8 +305,8 @@ describe("FeishuQuestionHandler", () => {
         answer: "暂时无法回答：模型未配置",
         citations: [],
         retrievalDebug: {},
-        status: "answered",
-        error: null,
+        status: "failed",
+        error: "模型未配置",
       });
     } finally {
       database.close();

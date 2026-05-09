@@ -62,6 +62,7 @@ const FEISHU_TOOL_SYSTEM_PROMPT =
 const DEFAULT_MAX_MODEL_TURNS = 4;
 const DEFAULT_MAX_TOOL_CALLS = 8;
 const FEISHU_TOOL_LOOP_FALLBACK = "定时任务操作已提交，但模型没有生成最终回复。";
+const FEISHU_TOOL_LOOP_LIMIT_REACHED = "工具调用次数已达到上限，请缩小请求后重试。";
 
 function toToolResultContent(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
@@ -110,7 +111,7 @@ async function runFeishuToolLoop(input: {
 
     for (const toolCall of assistantResult.toolCalls) {
       if (toolCallsUsed >= maxToolCalls) {
-        break;
+        return FEISHU_TOOL_LOOP_LIMIT_REACHED;
       }
 
       toolCallsUsed += 1;

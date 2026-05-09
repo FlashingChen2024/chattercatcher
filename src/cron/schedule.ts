@@ -1,12 +1,17 @@
 interface ParsedCronSchedule {
-  minute: FieldMatcher;
-  hour: FieldMatcher;
-  dayOfMonth: FieldMatcher;
-  month: FieldMatcher;
-  dayOfWeek: FieldMatcher;
+  minute: ParsedField;
+  hour: ParsedField;
+  dayOfMonth: ParsedField;
+  month: ParsedField;
+  dayOfWeek: ParsedField;
 }
 
 type FieldMatcher = (value: number) => boolean;
+
+interface ParsedField {
+  wildcard: boolean;
+  matches: FieldMatcher;
+}
 
 export function isValidCronSchedule(schedule: string): boolean {
   return parseCronSchedule(schedule) !== null;
@@ -43,12 +48,17 @@ export function getNextCronRun(schedule: string, after: Date): Date | null {
 }
 
 function matchesParsedSchedule(schedule: ParsedCronSchedule, date: Date): boolean {
+  const dayOfMonthMatches = schedule.dayOfMonth.matches(date.getDate());
+  const dayOfWeekMatches = schedule.dayOfWeek.matches(date.getDay());
+  const dayMatches = schedule.dayOfMonth.wildcard || schedule.dayOfWeek.wildcard
+    ? dayOfMonthMatches && dayOfWeekMatches
+    : dayOfMonthMatches || dayOfWeekMatches;
+
   return (
-    schedule.minute(date.getMinutes()) &&
-    schedule.hour(date.getHours()) &&
-    schedule.dayOfMonth(date.getDate()) &&
-    schedule.month(date.getMonth() + 1) &&
-    schedule.dayOfWeek(date.getDay())
+    schedule.minute.matches(date.getMinutes()) &&
+    schedule.hour.matches(date.getHours()) &&
+    dayMatches &&
+    schedule.month.matches(date.getMonth() + 1)
   );
 }
 
@@ -71,9 +81,9 @@ function parseCronSchedule(schedule: string): ParsedCronSchedule | null {
   return { minute, hour, dayOfMonth, month, dayOfWeek };
 }
 
-function parseMinuteField(field: string): FieldMatcher | null {
+function parseMinuteField(field: string): ParsedField | null {
   if (field === "*") {
-    return () => true;
+    return { wildcard: true, matches: () => true };
   }
 
   const stepMatch = /^\*\/(\d+)$/.exec(field);
@@ -83,7 +93,7 @@ function parseMinuteField(field: string): FieldMatcher | null {
       return null;
     }
 
-    return (value) => value % step === 0;
+    return { wildcard: false, matches: (value) => value % step === 0 };
   }
 
   if (field.includes(",")) {
@@ -93,7 +103,7 @@ function parseMinuteField(field: string): FieldMatcher | null {
     }
 
     const allowed = new Set(values as number[]);
-    return (value) => allowed.has(value);
+    return { wildcard: false, matches: (value) => allowed.has(value) };
   }
 
   const exact = parseExactNumber(field, 0, 59);
@@ -101,12 +111,12 @@ function parseMinuteField(field: string): FieldMatcher | null {
     return null;
   }
 
-  return (value) => value === exact;
+  return { wildcard: false, matches: (value) => value === exact };
 }
 
-function parseExactOrWildcardField(field: string, min: number, max: number): FieldMatcher | null {
+function parseExactOrWildcardField(field: string, min: number, max: number): ParsedField | null {
   if (field === "*") {
-    return () => true;
+    return { wildcard: true, matches: () => true };
   }
 
   const exact = parseExactNumber(field, min, max);
@@ -114,7 +124,7 @@ function parseExactOrWildcardField(field: string, min: number, max: number): Fie
     return null;
   }
 
-  return (value) => value === exact;
+  return { wildcard: false, matches: (value) => value === exact };
 }
 
 function parseExactNumber(field: string, min: number, max: number): number | null {

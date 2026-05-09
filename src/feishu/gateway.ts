@@ -1,10 +1,15 @@
 import * as lark from "@larksuiteoapi/node-sdk";
 import type { AppConfig, AppSecrets } from "../config/schema.js";
+import { CronJobRepository } from "../cron/jobs.js";
+import { generateCronJobMessage } from "../cron/generator.js";
+import type { CronJobScheduler } from "../cron/scheduler.js";
+import { createCronJobScheduler } from "../cron/scheduler.js";
 import { processEpisodesNow } from "../episodes/manual-process.js";
 import type { GatewayIngestAndDownloadResult, GatewayIngestor } from "../gateway/ingest.js";
 import type { IndexingScheduler } from "../gateway/indexing-scheduler.js";
 import { createIndexingScheduler } from "../gateway/indexing-scheduler.js";
 import { MessageRepository } from "../messages/repository.js";
+import { createAgenticRagSearchTools } from "../rag/factory.js";
 import { processMessagesNow } from "../rag/manual-index.js";
 import type { ChatModel } from "../rag/types.js";
 import type { SqliteDatabase } from "../db/database.js";
@@ -15,6 +20,7 @@ import { ImageMultimodalWorker } from "../multimodal/worker.js";
 import { getFeishuQuestionDecision, isFeishuMessageAddressedToBot } from "./question.js";
 import type { FeishuQuestionHandler } from "./question.js";
 import { FeishuResourceDownloader } from "./resource-downloader.js";
+import type { MessageSender } from "./sender.js";
 import { mapDomain } from "./sender.js";
 
 export interface FeishuGatewayRuntime {
@@ -38,6 +44,8 @@ export interface FeishuGatewayOptions {
   imageMultimodalProcessor?: { database: SqliteDatabase; model: MultimodalModel };
   indexingProcessor?: { database: SqliteDatabase };
   indexingScheduler?: IndexingScheduler;
+  cronJobProcessor?: { database: SqliteDatabase; model: ChatModel; sender: Pick<MessageSender, "sendTextToChat"> };
+  cronJobScheduler?: CronJobScheduler;
   wsClientFactory?: (params: {
     appId: string;
     appSecret: string;
@@ -227,18 +235,44 @@ export function createFeishuGateway(options: FeishuGatewayOptions): FeishuGatewa
       : undefined
   );
 
+  const cronJobScheduler = options.cronJobScheduler ?? (
+    options.cronJobProcessor
+      ? createCronJobScheduler({
+          repository: new CronJobRepository(options.cronJobProcessor.database),
+          sendTextToChat: (chatId, text) => options.cronJobProcessor!.sender.sendTextToChat(chatId, text),
+          generateMessage: async (job, now) => {
+            const { tools, close } = await createAgenticRagSearchTools({
+              config: options.config,
+              secrets: options.secrets,
+              database: options.cronJobProcessor!.database,
+              messages: new MessageRepository(options.cronJobProcessor!.database),
+              scope: { platform: "feishu", platformChatId: job.chatId },
+            });
+            try {
+              return await generateCronJobMessage({ prompt: job.prompt, model: options.cronJobProcessor!.model, tools, now });
+            } finally {
+              close();
+            }
+          },
+        })
+      : undefined
+  );
+
   return {
     async start() {
       try {
         await wsClient.start({ eventDispatcher });
         indexingScheduler?.start();
+        cronJobScheduler?.start();
       } catch (error) {
         indexingScheduler?.stop();
+        cronJobScheduler?.stop();
         throw formatGatewayStartError(error);
       }
     },
     stop() {
       indexingScheduler?.stop();
+      cronJobScheduler?.stop();
       wsClient.close({ force: true });
     },
   };
