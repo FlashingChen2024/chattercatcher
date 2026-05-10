@@ -310,6 +310,8 @@ describe("FeishuQuestionHandler cron tools", () => {
         toolCalls: [],
       },
     ]);
+    // Override complete() to support the salvage step
+    model.complete = vi.fn(async () => "抱歉，回答生成失败，请稍后重试。");
 
     try {
       const handler = new FeishuQuestionHandler({ config, secrets, database, model, sender });
@@ -330,7 +332,7 @@ describe("FeishuQuestionHandler cron tools", () => {
         },
       });
 
-      expect(sent).toContain("定时任务操作已提交，但模型没有生成最终回复。");
+      expect(sent).toContain("抱歉，回答生成失败，请稍后重试。");
     } finally {
       database.close();
     }

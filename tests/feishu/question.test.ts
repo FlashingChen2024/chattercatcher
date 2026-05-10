@@ -396,4 +396,75 @@ describe("FeishuQuestionHandler", () => {
       database.close();
     }
   });
+
+  it("工具循环耗尽时调用 complete 兜底生成答案", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    config.feishu.botOpenId = "ou_bot";
+    const secrets = createDefaultSecrets();
+    const database = openDatabase(config);
+    const sent: Array<{ chatId: string; text: string }> = [];
+
+    try {
+      new MessageRepository(database).ingest({
+        platform: "feishu",
+        platformChatId: "oc_family",
+        chatName: "家庭群",
+        platformMessageId: "om_fact",
+        senderId: "ou_mom",
+        senderName: "老妈",
+        messageType: "text",
+        text: "端午活动改到 2026/6/30。",
+        sentAt: "2026-04-25T08:00:00.000Z",
+      });
+
+      // All 4 rounds return tool calls, exhausting the loop
+      const completeWithTools = createCompleteWithToolsMock([
+        { content: "查一下。", toolCalls: [{ id: "c1", name: "search_messages", input: { query: "x" } }] },
+        { content: "再查。", toolCalls: [{ id: "c2", name: "search_messages", input: { query: "y" } }] },
+        { content: "继续。", toolCalls: [{ id: "c3", name: "search_messages", input: { query: "z" } }] },
+        { content: "还查。", toolCalls: [{ id: "c4", name: "search_messages", input: { query: "w" } }] },
+      ]);
+
+      let completeCalled = false;
+
+      await new FeishuQuestionHandler({
+        config,
+        secrets,
+        database,
+        model: {
+          completeWithTools,
+          async complete(messages) {
+            completeCalled = true;
+            const lastMessage = messages[messages.length - 1];
+            expect(lastMessage?.role).toBe("system");
+            expect(lastMessage?.content).toContain("直接给出最终答案");
+            return "根据搜索到的信息，端午活动在 2026/6/30。";
+          },
+        },
+        sender: {
+          async sendTextToChat(chatId, text) {
+            sent.push({ chatId, text });
+          },
+        },
+      }).handle({
+        event: {
+          message: {
+            message_id: "om_question",
+            chat_id: "oc_family",
+            message_type: "text",
+            content: JSON.stringify({ text: "@_user_1 端午活动什么时候？" }),
+            mentions: [{ name: "小陈", key: "@_user_1", id: { open_id: "ou_bot" } }],
+          },
+        },
+      });
+
+      expect(completeCalled).toBe(true);
+      expect(sent[0]?.text).toBe("收到，正在查。");
+      expect(sent[1]?.text).toContain("2026/6/30");
+      expect(sent[1]?.text).not.toContain("定时任务操作已提交");
+    } finally {
+      database.close();
+    }
+  });
 });

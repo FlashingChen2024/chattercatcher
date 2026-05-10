@@ -146,7 +146,16 @@ async function runFeishuToolLoop(input: {
     }
   }
 
-  return FEISHU_TOOL_LOOP_FALLBACK;
+  // Salvage: try one final completion without tools to generate an answer
+  try {
+    const salvageAnswer = await input.model.complete([
+      ...messages,
+      { role: "system", content: "请基于以上所有工具返回的信息，直接给出最终答案。不要再调用工具。" },
+    ]);
+    return salvageAnswer || "抱歉，回答生成失败，请稍后重试。";
+  } catch {
+    return "抱歉，回答生成失败，请稍后重试。";
+  }
 }
 
 type FeishuMessage = NonNullable<NonNullable<FeishuReceiveMessageEvent["event"]>["message"]>;
