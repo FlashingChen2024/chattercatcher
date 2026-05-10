@@ -210,7 +210,7 @@ describe("FeishuQuestionHandler", () => {
         database,
         model,
         sender,
-        thinkingEmojiType: "keyboard",
+        thinkingEmojiType: "OK",
       }).handle({
         event: {
           message: {
@@ -224,7 +224,7 @@ describe("FeishuQuestionHandler", () => {
       });
 
       expect(decision.shouldAnswer).toBe(true);
-      expect(reactions).toEqual([{ messageId: "om_question", emojiType: "keyboard" }]);
+      expect(reactions).toEqual([{ messageId: "om_question", emojiType: "OK" }]);
       expect(sent).toHaveLength(0);
       expect(replies).toHaveLength(1);
       expect(replies[0]).toMatchObject({
@@ -418,7 +418,6 @@ describe("FeishuQuestionHandler", () => {
         sentAt: "2026-04-25T08:00:00.000Z",
       });
 
-      // All 4 rounds return tool calls, exhausting the loop
       const completeWithTools = createCompleteWithToolsMock([
         { content: "查一下。", toolCalls: [{ id: "c1", name: "search_messages", input: { query: "x" } }] },
         { content: "再查。", toolCalls: [{ id: "c2", name: "search_messages", input: { query: "y" } }] },
@@ -463,6 +462,69 @@ describe("FeishuQuestionHandler", () => {
       expect(sent[0]?.text).toBe("收到，正在查。");
       expect(sent[1]?.text).toContain("2026/6/30");
       expect(sent[1]?.text).not.toContain("定时任务操作已提交");
+    } finally {
+      database.close();
+    }
+  });
+
+  it("模型返回原始工具标记时不直接发到群里", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    config.feishu.botOpenId = "ou_bot";
+    const secrets = createDefaultSecrets();
+    const database = openDatabase(config);
+    const sent: Array<{ chatId: string; text: string }> = [];
+
+    try {
+      new MessageRepository(database).ingest({
+        platform: "feishu",
+        platformChatId: "oc_family",
+        chatName: "家庭群",
+        platformMessageId: "om_fact",
+        senderId: "ou_mom",
+        senderName: "老妈",
+        messageType: "text",
+        text: "npm publish 需要用户自己执行。",
+        sentAt: "2026-05-10T08:00:00.000Z",
+      });
+
+      await new FeishuQuestionHandler({
+        config,
+        secrets,
+        database,
+        model: {
+          completeWithTools: createCompleteWithToolsMock([
+            {
+              content:
+                '<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name="search_messages">\n<｜｜DSML｜｜parameter name="limit" string="false">15</｜｜DSML｜｜parameter>\n<｜｜DSML｜｜parameter name="query" string="true">npm</｜｜DSML｜｜parameter>\n</｜｜DSML｜｜invoke>\n</｜｜DSML｜｜tool_calls>',
+              toolCalls: [],
+            },
+          ]),
+          async complete(messages) {
+            expect(messages.at(-1)?.content).toContain("直接给出最终答案");
+            return "查到的信息是：npm publish 需要用户自己执行。";
+          },
+        },
+        sender: {
+          async sendTextToChat(chatId, text) {
+            sent.push({ chatId, text });
+          },
+        },
+      }).handle({
+        event: {
+          message: {
+            message_id: "om_question",
+            chat_id: "oc_family",
+            message_type: "text",
+            content: JSON.stringify({ text: "@_user_1 npm 怎么发布？" }),
+            mentions: [{ name: "小陈", key: "@_user_1", id: { open_id: "ou_bot" } }],
+          },
+        },
+      });
+
+      expect(sent[0]?.text).toBe("收到，正在查。");
+      expect(sent[1]?.text).toContain("npm publish 需要用户自己执行");
+      expect(sent[1]?.text).not.toContain("DSML");
     } finally {
       database.close();
     }

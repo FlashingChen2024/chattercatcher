@@ -64,6 +64,10 @@ const DEFAULT_MAX_TOOL_CALLS = 8;
 const FEISHU_TOOL_LOOP_FALLBACK = "定时任务操作已提交，但模型没有生成最终回复。";
 const FEISHU_TOOL_LOOP_LIMIT_REACHED = "工具调用次数已达到上限，请缩小请求后重试。";
 
+function containsRawToolCallMarkup(content: string): boolean {
+  return /<｜｜DSML｜｜tool_calls>|<｜｜DSML｜｜invoke\s+name=|<tool_call>|<tool_calls>/i.test(content);
+}
+
 function toToolResultContent(value: unknown): string {
   if (typeof value === "string") return value;
   return JSON.stringify(value);
@@ -120,6 +124,7 @@ async function runFeishuToolLoop(input: {
 
   for (let turn = 0; turn < maxModelTurns; turn += 1) {
     const assistantResult = await input.model.completeWithTools(messages, input.tools);
+    const hasRawToolCallMarkup = containsRawToolCallMarkup(assistantResult.content);
     messages.push({
       role: "assistant",
       content: assistantResult.content,
@@ -128,6 +133,9 @@ async function runFeishuToolLoop(input: {
     });
 
     if (assistantResult.toolCalls.length === 0) {
+      if (hasRawToolCallMarkup) {
+        break;
+      }
       return assistantResult.content || FEISHU_TOOL_LOOP_FALLBACK;
     }
 
@@ -264,7 +272,7 @@ export class FeishuQuestionHandler {
 
     if (this.options.sender.addReactionToMessage) {
       try {
-        await this.options.sender.addReactionToMessage(messageId, this.options.thinkingEmojiType ?? "keyboard");
+        await this.options.sender.addReactionToMessage(messageId, this.options.thinkingEmojiType ?? "OK");
         return;
       } catch (error) {
         console.log(`飞书提问表情反馈失败，改用文字反馈：${error instanceof Error ? error.message : String(error)}`);

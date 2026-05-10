@@ -100,4 +100,48 @@ describe("indexMessageChunks", () => {
       database.close();
     }
   });
+
+  it("索引时按 64 条切分 embedding 请求", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    const database = openDatabase(config);
+    const batchSizes: number[] = [];
+    const batchedEmbedding: EmbeddingModel = {
+      async embed() {
+        return [1, 0];
+      },
+      async embedBatch(texts) {
+        if (texts.length > 64) {
+          throw new Error(`batch too large: ${texts.length}`);
+        }
+        batchSizes.push(texts.length);
+        return texts.map(() => [1, 0]);
+      },
+    };
+
+    try {
+      const messages = new MessageRepository(database);
+      for (let index = 0; index < 65; index += 1) {
+        messages.ingest({
+          platform: "dev",
+          platformChatId: "family",
+          chatName: "家庭群",
+          platformMessageId: `message-${index}`,
+          senderId: "mom",
+          senderName: "老妈",
+          messageType: "text",
+          text: `第 ${index} 条消息。`,
+          sentAt: "2026-04-25T08:00:00.000Z",
+        });
+      }
+
+      const store = new MemoryVectorStore();
+      const stats = await indexMessageChunks({ messages, embedding: batchedEmbedding, store });
+
+      expect(stats).toEqual({ chunks: 65, vectors: 65 });
+      expect(batchSizes).toEqual([64, 1]);
+    } finally {
+      database.close();
+    }
+  });
 });
