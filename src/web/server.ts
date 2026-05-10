@@ -239,6 +239,7 @@ function buildHtml(): string {
         const gatewayClass = status.gateway.configured ? "status-ok" : "status-warn";
         metrics.innerHTML = [
           ["Gateway", formatGatewayValue(status.gateway), formatGatewayNote(status.gateway), gatewayClass],
+          ["版本", status.version || "unknown", "当前运行版本", ""],
           ["群聊", status.data.chats, "本地群聊数", ""],
           ["消息", status.data.messages, "已入库消息", ""],
           ["会话记忆", status.data.episodes, "已生成摘要", ""],
@@ -430,29 +431,39 @@ function buildHtml(): string {
         ].join("\n");
       }
 
-      async function load() {
-        try {
-          const [status, recent, episodeList, chatList, fileList, jobList, qaLogList, cronJobList] = await Promise.all([
-            fetch("/api/status").then((response) => response.json()),
-            fetch("/api/messages/recent?limit=20").then((response) => response.json()),
-            fetch("/api/episodes?limit=10").then((response) => response.json()),
-            fetch("/api/chats").then((response) => response.json()),
-            fetch("/api/files").then((response) => response.json()),
-            fetch("/api/file-jobs").then((response) => response.json()),
-            fetch("/api/qa-logs?limit=10").then((response) => response.json()),
-            fetch("/api/cron-jobs").then((response) => response.json()),
-          ]);
-          renderMetrics(status);
-          renderMessages(recent.items);
-          renderEpisodes(episodeList.items);
-          renderChats(chatList.items);
-          renderFiles(fileList.items);
-          renderFileJobs(jobList.items);
-          renderQaLogs(qaLogList.items);
-          renderCronJobs(cronJobList.items);
-        } catch (error) {
-          metrics.innerHTML = '<div class="empty">数据加载失败：' + escapeHtml(error instanceof Error ? error.message : String(error)) + '</div>';
+      async function fetchJson(path) {
+        const response = await fetch(path);
+        if (!response.ok) {
+          const body = await response.text();
+          throw new Error(path + " " + response.status + " " + body);
         }
+        return response.json();
+      }
+
+      function renderLoadError(element, error) {
+        element.className = "empty";
+        element.textContent = "加载失败：" + (error instanceof Error ? error.message : String(error));
+      }
+
+      async function loadSection(path, element, render) {
+        try {
+          render(await fetchJson(path));
+        } catch (error) {
+          renderLoadError(element, error);
+        }
+      }
+
+      async function load() {
+        await Promise.all([
+          loadSection("/api/status", metrics, renderMetrics),
+          loadSection("/api/messages/recent?limit=20", messages, (data) => renderMessages(data.items)),
+          loadSection("/api/episodes?limit=10", episodes, (data) => renderEpisodes(data.items)),
+          loadSection("/api/chats", chats, (data) => renderChats(data.items)),
+          loadSection("/api/files", files, (data) => renderFiles(data.items)),
+          loadSection("/api/file-jobs", fileJobs, (data) => renderFileJobs(data.items)),
+          loadSection("/api/qa-logs?limit=10", qaLogs, (data) => renderQaLogs(data.items)),
+          loadSection("/api/cron-jobs", cronJobs, (data) => renderCronJobs(data.items)),
+        ]);
       }
 
       async function processNow() {
@@ -516,6 +527,10 @@ function buildHtml(): string {
 </html>`;
 }
 
+export interface WebAppOptions {
+  version?: string;
+}
+
 function parseLimit(value: string | undefined, fallback: number, max: number): number {
   const rawLimit = Number(value ?? fallback);
   return Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), max) : fallback;
@@ -535,9 +550,10 @@ function isAuthorizedWebAction(request: { headers: Record<string, string | strin
 }
 
 
-export function createWebApp(config: AppConfig): FastifyInstance {
+export function createWebApp(config: AppConfig, options: WebAppOptions = {}): FastifyInstance {
   const app = Fastify({ logger: false });
   const database = openDatabase(config);
+  const version = options.version ?? "unknown";
   const messages = new MessageRepository(database);
   const episodes = new EpisodeRepository(database);
   const fileJobs = new FileJobRepository(database);
@@ -561,6 +577,7 @@ export function createWebApp(config: AppConfig): FastifyInstance {
     await tokenReady;
     return {
       app: "ChatterCatcher",
+      version,
       gateway: getGatewayStatus(config),
       data: {
         chats: messages.getChatCount(),
@@ -680,11 +697,12 @@ export function createWebApp(config: AppConfig): FastifyInstance {
   return app;
 }
 
-export async function startWebServer(config: AppConfig): Promise<void> {
-  const app = createWebApp(config);
+export async function startWebServer(config: AppConfig, options: WebAppOptions = {}): Promise<void> {
+  const app = createWebApp(config, options);
   await app.listen({ host: config.web.host, port: config.web.port });
   const address = app.server.address();
   const url =
     typeof address === "string" ? address : `http://${config.web.host}:${address?.port ?? config.web.port}`;
-  console.log(`ChatterCatcher Web UI: ${url}`);
+  const versionText = options.version ? ` ${options.version}` : "";
+  console.log(`ChatterCatcher Web UI${versionText}: ${url}`);
 }
