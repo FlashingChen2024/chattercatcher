@@ -113,7 +113,7 @@ describe("FeishuMessageSender", () => {
       },
     });
 
-    await sender.addReactionToMessage("om_question", "keyboard");
+    await sender.addReactionToMessage("om_question", "OK");
 
     expect(calls).toEqual([
       {
@@ -122,7 +122,7 @@ describe("FeishuMessageSender", () => {
         },
         data: {
           reaction_type: {
-            emoji_type: "keyboard",
+            emoji_type: "OK",
           },
         },
       },

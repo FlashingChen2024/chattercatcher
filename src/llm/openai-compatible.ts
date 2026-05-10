@@ -35,6 +35,8 @@ interface EmbeddingResponse {
   }>;
 }
 
+const OPENAI_EMBEDDING_BATCH_SIZE = 64;
+
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
 }
@@ -78,14 +80,80 @@ function toOpenAITool(tool: ChatTool): {
   };
 }
 
+function parseToolCallArguments(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+}
+
+function decodeDsmlValue(value: string, isString: boolean): unknown {
+  const trimmed = value.trim();
+  if (isString) {
+    return trimmed;
+  }
+
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (trimmed === "null") return null;
+
+  const numberValue = Number(trimmed);
+  if (trimmed && Number.isFinite(numberValue)) {
+    return numberValue;
+  }
+
+  return trimmed;
+}
+
+function parseDsmlToolCalls(content: string | undefined): ToolCall[] {
+  if (!content?.includes("DSML")) {
+    return [];
+  }
+
+  const toolCalls: ToolCall[] = [];
+  const invokePattern = /<｜｜DSML｜｜invoke\s+name="([^"]+)"\s*>([\s\S]*?)<\/｜｜DSML｜｜invoke>/g;
+  const parameterPattern = /<｜｜DSML｜｜parameter\s+name="([^"]+)"\s+string="(true|false)"\s*>([\s\S]*?)<\/｜｜DSML｜｜parameter>/g;
+
+  for (const invoke of content.matchAll(invokePattern)) {
+    const name = invoke[1];
+    if (!name) {
+      continue;
+    }
+
+    const input: Record<string, unknown> = {};
+    const body = invoke[2] ?? "";
+    for (const parameter of body.matchAll(parameterPattern)) {
+      const parameterName = parameter[1];
+      if (!parameterName) {
+        continue;
+      }
+      input[parameterName] = decodeDsmlValue(parameter[3] ?? "", parameter[2] === "true");
+    }
+
+    toolCalls.push({
+      id: `dsml_${toolCalls.length + 1}`,
+      name,
+      input,
+    });
+  }
+
+  return toolCalls;
+}
+
 function parseToolCalls(message?: OpenAICompatibleMessage): ToolCall[] {
-  return (
+  const standardToolCalls =
     message?.tool_calls?.map((toolCall) => ({
       id: toolCall.id,
       name: toolCall.function.name,
-      input: JSON.parse(toolCall.function.arguments),
-    })) ?? []
-  );
+      input: parseToolCallArguments(toolCall.function.arguments),
+    })) ?? [];
+
+  return standardToolCalls.length > 0 ? standardToolCalls : parseDsmlToolCalls(message?.content);
+}
+
+function isDsmlToolCallContent(content: string | undefined): boolean {
+  return parseDsmlToolCalls(content).length > 0;
 }
 
 export class OpenAICompatibleChatModel implements ChatModel {
@@ -151,10 +219,11 @@ export class OpenAICompatibleChatModel implements ChatModel {
 
     const data = (await response.json()) as ChatCompletionResponse;
     const message = data.choices?.[0]?.message;
+    const toolCalls = parseToolCalls(message);
 
     return {
-      content: message?.content ?? "",
-      toolCalls: parseToolCalls(message),
+      content: toolCalls.length > 0 && isDsmlToolCallContent(message?.content) ? "" : (message?.content ?? ""),
+      toolCalls,
       reasoningContent: message?.reasoning_content ?? undefined,
     };
   }
@@ -179,6 +248,14 @@ export class OpenAICompatibleEmbeddingModel implements EmbeddingModel {
       throw new Error("Embedding 配置不完整。请运行 chattercatcher setup 或 chattercatcher settings。");
     }
 
+    const vectors: number[][] = [];
+    for (let index = 0; index < texts.length; index += OPENAI_EMBEDDING_BATCH_SIZE) {
+      vectors.push(...(await this.fetchEmbeddingBatch(texts.slice(index, index + OPENAI_EMBEDDING_BATCH_SIZE))));
+    }
+    return vectors;
+  }
+
+  private async fetchEmbeddingBatch(texts: string[]): Promise<number[][]> {
     const response = await fetch(`${normalizeBaseUrl(this.options.baseUrl)}/embeddings`, {
       method: "POST",
       headers: {

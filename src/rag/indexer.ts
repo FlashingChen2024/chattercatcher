@@ -8,6 +8,8 @@ export interface VectorIndexStats {
   vectors: number;
 }
 
+const EMBEDDING_INDEX_BATCH_SIZE = 64;
+
 export async function indexMessageChunks(input: {
   messages: MessageRepository;
   embedding: EmbeddingModel;
@@ -22,7 +24,14 @@ export async function indexMessageChunks(input: {
     return { chunks: 0, vectors: 0 };
   }
 
-  const vectors = await input.embedding.embedBatch(chunks.map((chunk) => chunk.text));
+  const vectors: number[][] = [];
+  for (let index = 0; index < chunks.length; index += EMBEDDING_INDEX_BATCH_SIZE) {
+    vectors.push(
+      ...(await input.embedding.embedBatch(
+        chunks.slice(index, index + EMBEDDING_INDEX_BATCH_SIZE).map((chunk) => chunk.text),
+      )),
+    );
+  }
   const records: VectorRecord[] = [];
 
   for (const [index, chunk] of chunks.entries()) {

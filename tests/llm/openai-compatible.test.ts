@@ -74,6 +74,30 @@ describe("OpenAICompatibleChatModel", () => {
       }),
     );
   });
+
+  it("批量 embedding 请求按 64 条切分", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as { input: string[] };
+      return new Response(
+        JSON.stringify({
+          data: body.input.map((_, index) => ({ embedding: [index] })),
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    const model = new OpenAICompatibleEmbeddingModel({
+      baseUrl: "https://example.test/v1",
+      apiKey: "test-key",
+      model: "embedding-model",
+    });
+
+    const result = await model.embedBatch(Array.from({ length: 65 }, (_, index) => `message-${index}`));
+
+    expect(result).toHaveLength(65);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).input).toHaveLength(64);
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)).input).toHaveLength(1);
+  });
 });
 
 describe("OpenAICompatibleChatModel tool calls", () => {
@@ -148,6 +172,33 @@ describe("OpenAICompatibleChatModel tool calls", () => {
     expect(result).toEqual({
       content: "",
       toolCalls: [{ id: "call_1", name: "hybrid_search", input: { query: "0.1.16 发布" } }],
+    });
+  });
+
+  it("parses DSML tool calls returned as content", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content:
+                  '<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name="search_messages">\n<｜｜DSML｜｜parameter name="limit" string="false">15</｜｜DSML｜｜parameter>\n<｜｜DSML｜｜parameter name="query" string="true">npm</｜｜DSML｜｜parameter>\n</｜｜DSML｜｜invoke>\n</｜｜DSML｜｜tool_calls>',
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const model = new OpenAICompatibleChatModel({ baseUrl: "https://llm.test/v1", apiKey: "key", model: "test-model" });
+
+    const result = await model.completeWithTools?.([{ role: "user", content: "查 npm" }], []);
+
+    expect(result).toEqual({
+      content: "",
+      toolCalls: [{ id: "dsml_1", name: "search_messages", input: { limit: 15, query: "npm" } }],
+      reasoningContent: undefined,
     });
   });
 });
