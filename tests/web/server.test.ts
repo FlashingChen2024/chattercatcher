@@ -76,13 +76,14 @@ describe("web server", () => {
       database.close();
     }
 
-    const app = createWebApp(config);
+    const app = createWebApp(config, { version: "0.1.test" });
     try {
       const status = await app.inject({ method: "GET", url: "/api/status" });
       expect(status.statusCode).toBe(200);
       const statusJson = status.json();
       expect(statusJson).toMatchObject({
         app: "ChatterCatcher",
+        version: "0.1.test",
         data: { chats: 2, messages: 2, files: 1, episodes: 1, qaLogs: 1, cronJobs: 2 },
         rag: {
           mode: "required",
@@ -191,7 +192,7 @@ describe("web server", () => {
   it("首页使用中文文案并声明 RAG 约束", async () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;
-    const app = createWebApp(config);
+    const app = createWebApp(config, { version: "0.1.test" });
     try {
       const response = await app.inject({ method: "GET", url: "/" });
       expect(response.statusCode).toBe(200);
@@ -207,6 +208,8 @@ describe("web server", () => {
       expect(response.body).toContain("data-delete-cron-job");
       expect(response.body).toContain("正在删除定时任务");
       expect(response.body).toContain("x-chattercatcher-web-token");
+      expect(response.body).toContain("当前运行版本");
+      expect(response.body).toContain("加载失败");
       expect(response.body).toContain("chattercatcher process episodes");
       expect(response.body).toContain("立即处理");
       expect(response.body).toContain("setInterval");

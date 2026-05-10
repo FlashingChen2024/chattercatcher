@@ -246,7 +246,7 @@ async function startGatewayForegroundCommand(): Promise<void> {
     });
     console.log(status.message);
     console.log("本地 Web UI 仍会启动，方便继续配置。");
-    await startWebServer(config);
+    await startWebServer(config, { version: packageJson.version });
     return;
   }
 
@@ -324,7 +324,7 @@ async function startGatewayForegroundCommand(): Promise<void> {
 
   try {
     await gatewayRuntime.start();
-    await startWebServer(config);
+    await startWebServer(config, { version: packageJson.version });
   } catch (error) {
     cleanup();
     throw error;
@@ -376,7 +376,7 @@ const web = program.command("web").description("管理本地 Web UI");
 
 web.command("start").description("启动本地 Web UI").action(async () => {
   const config = await loadConfig();
-  await startWebServer(config);
+  await startWebServer(config, { version: packageJson.version });
 });
 
 const data = program.command("data").description("管理本地知识库数据");
