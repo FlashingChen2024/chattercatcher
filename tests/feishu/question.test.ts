@@ -315,6 +315,88 @@ describe("FeishuQuestionHandler", () => {
     }
   });
 
+  it("把当前群聊最近问答注入系统提示词", async () => {
+    const config = createDefaultConfig();
+    config.storage.dataDir = testDir;
+    config.feishu.botOpenId = "ou_bot";
+    const secrets = createDefaultSecrets();
+    const database = openDatabase(config);
+    const capturedMessages: Parameters<NonNullable<ChatModel["completeWithTools"]>>[0][] = [];
+
+    try {
+      const qaLogs = new QaLogRepository(database);
+      qaLogs.create({
+        chatId: "oc_family",
+        questionMessageId: "om_old_1",
+        question: "端午活动哪天？",
+        answer: "端午活动在 2026/6/30。",
+        citations: [],
+        retrievalDebug: {},
+        status: "answered",
+        createdAt: "2026-05-16T08:00:00.000Z",
+      });
+      qaLogs.create({
+        chatId: "oc_other",
+        questionMessageId: "om_other",
+        question: "其他群问题",
+        answer: "其他群答案。",
+        citations: [],
+        retrievalDebug: {},
+        status: "answered",
+        createdAt: "2026-05-16T08:01:00.000Z",
+      });
+      qaLogs.create({
+        chatId: "oc_family",
+        questionMessageId: "om_failed",
+        question: "失败的问题",
+        answer: "暂时无法回答：失败",
+        citations: [],
+        retrievalDebug: {},
+        status: "failed",
+        error: "失败",
+        createdAt: "2026-05-16T08:02:00.000Z",
+      });
+
+      await new FeishuQuestionHandler({
+        config,
+        secrets,
+        database,
+        model: {
+          completeWithTools: vi.fn(async (messages) => {
+            capturedMessages.push(messages);
+            return { content: "它是在 2026/6/30。", toolCalls: [] };
+          }),
+          async complete() {
+            throw new Error("complete should not be called");
+          },
+        },
+        sender: {
+          async sendTextToChat() {},
+        },
+      }).handle({
+        event: {
+          message: {
+            message_id: "om_question",
+            chat_id: "oc_family",
+            message_type: "text",
+            content: JSON.stringify({ text: "@_user_1 那是哪天？" }),
+            mentions: [{ name: "小陈", key: "@_user_1", id: { open_id: "ou_bot" } }],
+          },
+        },
+      });
+
+      const systemPrompt = capturedMessages[0]?.[0]?.content ?? "";
+      expect(systemPrompt).toContain("近期对话上下文：");
+      expect(systemPrompt).toContain("用户：端午活动哪天？");
+      expect(systemPrompt).toContain("助手：端午活动在 2026/6/30。");
+      expect(systemPrompt).toContain("如果与检索证据冲突，以检索证据为准");
+      expect(systemPrompt).not.toContain("其他群问题");
+      expect(systemPrompt).not.toContain("失败的问题");
+    } finally {
+      database.close();
+    }
+  });
+
   it("回答生成失败时向群里说明原因", async () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;

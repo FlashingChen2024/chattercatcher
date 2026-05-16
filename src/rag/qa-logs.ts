@@ -43,6 +43,21 @@ function clampLimit(limit: number): number {
   return Math.max(1, Math.min(200, Math.trunc(limit)));
 }
 
+function mapQaLogRow(row: QaLogRow): QaLogRecord {
+  return {
+    id: row.id,
+    chatId: row.chat_id,
+    questionMessageId: row.question_message_id,
+    question: row.question,
+    answer: row.answer,
+    citations: JSON.parse(row.citations_json) as unknown[],
+    retrievalDebug: JSON.parse(row.retrieval_debug_json) as Record<string, unknown>,
+    status: row.status,
+    error: row.error,
+    createdAt: row.created_at,
+  };
+}
+
 export class QaLogRepository {
   constructor(private readonly database: SqliteDatabase) {}
 
@@ -127,18 +142,33 @@ export class QaLogRepository {
       )
       .all(clampLimit(limit)) as QaLogRow[];
 
-    return rows.map((row) => ({
-      id: row.id,
-      chatId: row.chat_id,
-      questionMessageId: row.question_message_id,
-      question: row.question,
-      answer: row.answer,
-      citations: JSON.parse(row.citations_json) as unknown[],
-      retrievalDebug: JSON.parse(row.retrieval_debug_json) as Record<string, unknown>,
-      status: row.status,
-      error: row.error,
-      createdAt: row.created_at,
-    }));
+    return rows.map(mapQaLogRow);
+  }
+
+  listRecentByChat(chatId: string, limit: number): QaLogRecord[] {
+    const rows = this.database
+      .prepare(
+        `
+          SELECT
+            id,
+            chat_id,
+            question_message_id,
+            question,
+            answer,
+            citations_json,
+            retrieval_debug_json,
+            status,
+            error,
+            created_at
+          FROM qa_logs
+          WHERE chat_id = ? AND status = 'answered'
+          ORDER BY created_at DESC
+          LIMIT ?
+        `,
+      )
+      .all(chatId, clampLimit(limit)) as QaLogRow[];
+
+    return rows.map(mapQaLogRow);
   }
 
   getCount(): number {
