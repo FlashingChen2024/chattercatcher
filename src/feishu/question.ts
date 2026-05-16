@@ -113,6 +113,7 @@ async function runFeishuToolLoop(input: {
   maxModelTurns?: number;
   maxToolCalls?: number;
   memberPrompt?: string;
+  conversationContext?: string;
 }): Promise<string> {
   if (!input.model.completeWithTools) {
     throw new Error("当前 LLM 客户端不支持工具调用。");
@@ -120,9 +121,14 @@ async function runFeishuToolLoop(input: {
 
   const maxModelTurns = input.maxModelTurns ?? DEFAULT_MAX_MODEL_TURNS;
   const maxToolCalls = input.maxToolCalls ?? DEFAULT_MAX_TOOL_CALLS;
-  const systemPrompt = input.memberPrompt
-    ? `${FEISHU_TOOL_SYSTEM_PROMPT}\n\n${input.memberPrompt}\n回答中遇到上述 ID 时优先使用对应群昵称；没有映射时保留原 ID，不要编造昵称。`
-    : FEISHU_TOOL_SYSTEM_PROMPT;
+  const systemPromptParts = [FEISHU_TOOL_SYSTEM_PROMPT];
+  if (input.memberPrompt) {
+    systemPromptParts.push(`${input.memberPrompt}\n回答中遇到上述 ID 时优先使用对应群昵称；没有映射时保留原 ID，不要编造昵称。`);
+  }
+  if (input.conversationContext) {
+    systemPromptParts.push(`${input.conversationContext}\n这些是当前群聊里最近几轮你和用户的问答，只作为理解省略指代和连续追问的上下文；如果与检索证据冲突，以检索证据为准。`);
+  }
+  const systemPrompt = systemPromptParts.join("\n\n");
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     { role: "user", content: `当前时间：${input.now.toISOString()}\n问题：${input.question}` },
@@ -192,6 +198,14 @@ async function runFeishuToolLoop(input: {
   } catch {
     return "抱歉，回答生成失败，请稍后重试。";
   }
+}
+
+function formatConversationContext(records: import("../rag/qa-logs.js").QaLogRecord[]): string {
+  const lines = records
+    .slice()
+    .reverse()
+    .map((record, index) => `第 ${index + 1} 轮\n用户：${record.question}\n助手：${record.answer}`);
+  return lines.length ? `近期对话上下文：\n${lines.join("\n\n")}` : "";
 }
 
 type FeishuMessage = NonNullable<NonNullable<FeishuReceiveMessageEvent["event"]>["message"]>;
@@ -331,12 +345,14 @@ export class FeishuQuestionHandler {
         const allTools: FeishuExecutableTool[] = [...tools, ...cronTools];
         const memberRepository = this.options.memberRepository ?? new FeishuMemberRepository(this.options.database);
         const memberPrompt = formatFeishuMemberPrompt(memberRepository.listByChat(decision.chatId));
+        const conversationContext = formatConversationContext(qaLogs.listRecentByChat(decision.chatId, 6));
         const answer = await runFeishuToolLoop({
           question: decision.question,
           now,
           tools: allTools,
           model: this.options.model,
           memberPrompt,
+          conversationContext,
         });
         qaLogs.create({
           chatId: decision.chatId,
