@@ -214,6 +214,14 @@ export class FeishuMemberResolver {
   }
 }
 
+export function formatFeishuMemberPrompt(members: FeishuChatMemberRecord[], limit = 80): string {
+  const lines = members
+    .filter((member) => member.userName)
+    .slice(0, limit)
+    .map((member) => `${member.openId} = ${member.userName}`);
+  return lines.length ? `当前群聊成员 ID 与群昵称映射：\n${lines.join("\n")}` : "";
+}
+
 export function createFeishuChatMembersClient(client: FeishuChatMembersSdkClientLike): FeishuChatMembersClient {
   return {
     async listChatMembers(payload) {

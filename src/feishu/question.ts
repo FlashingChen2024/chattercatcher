@@ -8,6 +8,7 @@ import { createAgenticRagSearchTools } from "../rag/factory.js";
 import { QaLogRepository } from "../rag/qa-logs.js";
 import type { RagSearchTool } from "../rag/search-tools.js";
 import type { ChatMessage, ChatModel, ChatTool, EvidenceBlock } from "../rag/types.js";
+import { FeishuMemberRepository, formatFeishuMemberPrompt } from "./members.js";
 import type { MessageSender } from "./sender.js";
 import type { FeishuReceiveMessageEvent } from "./normalize.js";
 
@@ -17,6 +18,7 @@ export interface FeishuQuestionHandlerOptions {
   database: SqliteDatabase;
   model: ChatModel;
   sender: MessageSender;
+  memberRepository?: FeishuMemberRepository;
   thinkingEmojiType?: string;
 }
 
@@ -108,6 +110,7 @@ async function runFeishuToolLoop(input: {
   tools: FeishuExecutableTool[];
   maxModelTurns?: number;
   maxToolCalls?: number;
+  memberPrompt?: string;
 }): Promise<string> {
   if (!input.model.completeWithTools) {
     throw new Error("当前 LLM 客户端不支持工具调用。");
@@ -115,8 +118,11 @@ async function runFeishuToolLoop(input: {
 
   const maxModelTurns = input.maxModelTurns ?? DEFAULT_MAX_MODEL_TURNS;
   const maxToolCalls = input.maxToolCalls ?? DEFAULT_MAX_TOOL_CALLS;
+  const systemPrompt = input.memberPrompt
+    ? `${FEISHU_TOOL_SYSTEM_PROMPT}\n\n${input.memberPrompt}\n回答中遇到上述 ID 时优先使用对应群昵称；没有映射时保留原 ID，不要编造昵称。`
+    : FEISHU_TOOL_SYSTEM_PROMPT;
   const messages: ChatMessage[] = [
-    { role: "system", content: FEISHU_TOOL_SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
     { role: "user", content: `当前时间：${input.now.toISOString()}\n问题：${input.question}` },
   ];
   const toolsByName = new Map(input.tools.map((tool) => [tool.name, tool]));
@@ -312,11 +318,14 @@ export class FeishuQuestionHandler {
           createdByOpenId: payload.event?.sender?.sender_id?.open_id,
         });
         const allTools: FeishuExecutableTool[] = [...tools, ...cronTools];
+        const memberRepository = this.options.memberRepository ?? new FeishuMemberRepository(this.options.database);
+        const memberPrompt = formatFeishuMemberPrompt(memberRepository.listByChat(decision.chatId));
         const answer = await runFeishuToolLoop({
           question: decision.question,
           now,
           tools: allTools,
           model: this.options.model,
+          memberPrompt,
         });
         qaLogs.create({
           chatId: decision.chatId,

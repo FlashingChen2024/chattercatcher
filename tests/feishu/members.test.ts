@@ -8,6 +8,7 @@ import {
   createFeishuChatMembersClient,
   FeishuMemberRepository,
   FeishuMemberResolver,
+  formatFeishuMemberPrompt,
 } from "../../src/feishu/members.js";
 
 let testDir: string;
@@ -79,6 +80,15 @@ describe("FeishuMemberRepository", () => {
     } finally {
       database.close();
     }
+  });
+
+  it("formats chat member mappings for prompts", () => {
+    const text = formatFeishuMemberPrompt([
+      { chatId: "oc_family", openId: "ou_mom", userName: "妈妈", updatedAt: "2026-05-16T00:00:00.000Z" },
+      { chatId: "oc_family", openId: "ou_unknown", userName: "", updatedAt: "2026-05-16T00:00:00.000Z" },
+    ]);
+
+    expect(text).toBe("当前群聊成员 ID 与群昵称映射：\nou_mom = 妈妈");
   });
 
   it("refreshes chat members through the Feishu SDK and returns nickname for an open id", async () => {
