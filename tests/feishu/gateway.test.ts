@@ -162,19 +162,42 @@ describe("createFeishuGateway", () => {
     expect(indexingScheduler.stop).toHaveBeenCalledTimes(1);
   });
 
-  it("长连接事件进入 GatewayIngestor 并写入消息库", async () => {
+  it("长连接事件进入 GatewayIngestor 并携带成员解析器", async () => {
     const config = createDefaultConfig();
     config.storage.dataDir = testDir;
     config.feishu.appId = "cli_app_id";
     const secrets = createDefaultSecrets();
     secrets.feishu.appSecret = "app_secret";
     const database = openDatabase(config);
+    const normalizedMessage = {
+      id: "msg_1",
+      platform: "feishu",
+      platformMessageId: "om_1",
+      platformChatId: "oc_family",
+      senderId: "ou_mom",
+      senderName: "妈妈",
+      text: "端午活动改到 2026/6/30，以这个为准。",
+      createdAt: new Date("2026-05-16T10:00:00.000Z"),
+      updatedAt: new Date("2026-05-16T10:00:00.000Z"),
+    };
+    const ingestor = {
+      ingestFeishuEventWithMembers: vi.fn(async ({ payload, memberResolver }) => {
+        expect(payload.event?.message?.message_id).toBe("om_1");
+        expect(memberResolver).toBeDefined();
+        return { accepted: true, messageId: "msg_1", message: normalizedMessage, duplicate: false };
+      }),
+    };
 
     try {
       const runtime = createFeishuGateway({
         config,
         secrets,
-        ingestor: new GatewayIngestor(database),
+        ingestor: ingestor as unknown as GatewayIngestor,
+        cronJobProcessor: {
+          database,
+          model: {} as never,
+          sender: { sendTextToChat: vi.fn(), sendImageToChat: vi.fn() },
+        },
         wsClientFactory: () => ({
           async start(params: { eventDispatcher: lark.EventDispatcher }) {
             const handler = params.eventDispatcher.handles.get("im.message.receive_v1");
@@ -196,9 +219,7 @@ describe("createFeishuGateway", () => {
 
       await runtime.start();
 
-      const messages = new MessageRepository(database);
-      expect(messages.getMessageCount()).toBe(1);
-      expect(messages.searchMessages("端午活动什么时候")[0]?.text).toContain("2026/6/30");
+      expect(ingestor.ingestFeishuEventWithMembers).toHaveBeenCalledTimes(1);
     } finally {
       database.close();
     }
