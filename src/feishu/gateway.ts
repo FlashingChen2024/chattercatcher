@@ -110,20 +110,24 @@ export function createFeishuEventDispatcher(options: {
         }
       }
 
-      const result: GatewayIngestAndDownloadResult = options.resourceDownloader
-        ? await options.ingestor.ingestFeishuEventAndDownloadAttachments({
-            payload,
-            downloader: options.resourceDownloader,
-            config: options.config,
-            secrets: options.secrets,
-            vectorIndexMessage: options.attachmentVectorIndexer,
-          })
-        : options.memberResolver
-          ? await options.ingestor.ingestFeishuEventWithMembers({
-              payload,
-              memberResolver: options.memberResolver,
-            })
-          : options.ingestor.ingestFeishuEvent(payload);
+      let result: GatewayIngestAndDownloadResult;
+      if (options.resourceDownloader) {
+        result = await options.ingestor.ingestFeishuEventAndDownloadAttachments({
+          payload,
+          downloader: options.resourceDownloader,
+          config: options.config,
+          secrets: options.secrets,
+          vectorIndexMessage: options.attachmentVectorIndexer,
+          memberResolver: options.memberResolver,
+        });
+      } else if (options.memberResolver) {
+        result = await options.ingestor.ingestFeishuEventWithMembers({
+          payload,
+          memberResolver: options.memberResolver,
+        });
+      } else {
+        result = options.ingestor.ingestFeishuEvent(payload);
+      }
 
       if (!result.accepted) {
         console.log(`飞书消息未入库：${result.reason}`);
@@ -225,20 +229,14 @@ export function createFeishuGateway(options: FeishuGatewayOptions): FeishuGatewa
       onReconnected: () => console.log("飞书长连接已重连。"),
     });
 
-  const memberDatabase = options.episodeProcessor?.database
-    ?? options.imageMultimodalProcessor?.database
-    ?? options.indexingProcessor?.database
-    ?? options.cronJobProcessor?.database;
-  const memberResolver = memberDatabase
-    ? new FeishuMemberResolver({
-        repository: new FeishuMemberRepository(memberDatabase),
-        client: createFeishuChatMembersClient(new lark.Client({
-          appId: options.config.feishu.appId,
-          appSecret: options.secrets.feishu.appSecret,
-          domain: mapDomain(options.config.feishu.domain),
-        }) as Parameters<typeof createFeishuChatMembersClient>[0]),
-      })
-    : undefined;
+  const memberResolver = new FeishuMemberResolver({
+    repository: new FeishuMemberRepository(options.ingestor.database),
+    client: createFeishuChatMembersClient(new lark.Client({
+      appId: options.config.feishu.appId,
+      appSecret: options.secrets.feishu.appSecret,
+      domain: mapDomain(options.config.feishu.domain),
+    }) as Parameters<typeof createFeishuChatMembersClient>[0]),
+  });
 
   const eventDispatcher = createFeishuEventDispatcher({
     config: options.config,

@@ -74,7 +74,7 @@ export class GatewayIngestor {
   private readonly jobs: FileJobRepository;
   private readonly imageTasks: ImageMultimodalTaskRepository;
 
-  constructor(database: SqliteDatabase) {
+  constructor(public readonly database: SqliteDatabase) {
     this.messages = new MessageRepository(database);
     this.jobs = new FileJobRepository(database);
     this.imageTasks = new ImageMultimodalTaskRepository(database);
@@ -132,8 +132,11 @@ export class GatewayIngestor {
     config: AppConfig;
     secrets: AppSecrets;
     vectorIndexMessage?: (messageId: string) => Promise<{ chunks: number; vectors: number }>;
+    memberResolver?: Pick<FeishuMemberResolver, "resolveOpenIdName">;
   }): Promise<GatewayIngestAndDownloadResult> {
-    const result = this.ingestFeishuEvent(input.payload);
+    const result = input.memberResolver
+      ? await this.ingestFeishuEventWithMembers({ payload: input.payload, memberResolver: input.memberResolver })
+      : this.ingestFeishuEvent(input.payload);
     if (!result.accepted || !result.messageId || !result.message || result.duplicate) {
       return result;
     }
