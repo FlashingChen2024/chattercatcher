@@ -64,6 +64,51 @@ describe("buildFeishuPostContent", () => {
     });
   });
 
+  it("keeps parentheses inside Markdown link URLs", () => {
+    expect(buildFeishuPostContent("参考 [条目](https://example.com/a_(b))。" )).toEqual({
+      post: {
+        zh_cn: {
+          title: "",
+          content: [
+            [
+              { tag: "text", text: "参考 " },
+              { tag: "a", text: "条目", href: "https://example.com/a_(b)" },
+              { tag: "text", text: "。" },
+            ],
+          ],
+        },
+      },
+    });
+  });
+
+  it("uses a deliberate blank text node for empty Markdown", () => {
+    expect(buildFeishuPostContent("")).toEqual({
+      post: {
+        zh_cn: {
+          title: "",
+          content: [[{ tag: "text", text: " " }]],
+        },
+      },
+    });
+  });
+
+  it("prepends mention elements before a non-text first element", () => {
+    expect(buildFeishuPostContent("[文档](https://example.com)", { mentions: [{ openId: "ou_mom", name: "妈妈" }] })).toEqual({
+      post: {
+        zh_cn: {
+          title: "",
+          content: [
+            [
+              { tag: "at", user_id: "ou_mom", user_name: "妈妈" },
+              { tag: "text", text: " " },
+              { tag: "a", text: "文档", href: "https://example.com" },
+            ],
+          ],
+        },
+      },
+    });
+  });
+
   it("prepends mention elements when provided", () => {
     expect(buildFeishuPostContent("记得带水杯", { mentions: [{ openId: "ou_mom", name: "妈妈" }] })).toEqual({
       post: {

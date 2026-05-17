@@ -49,31 +49,71 @@ export function formatTextWithMentions(text: string, options?: SendTextOptions):
   return `${prefix} ${text}`.trim();
 }
 
+function findMarkdownLinkEnd(text: string, start: number): number {
+  let depth = 0;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "(") {
+      depth += 1;
+    } else if (char === ")") {
+      if (depth === 0) return index;
+      depth -= 1;
+    }
+  }
+  return -1;
+}
+
 function parseInline(text: string): FeishuPostElement[] {
   const elements: FeishuPostElement[] = [];
-  const pattern = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))|(\*\*([^*]+)\*\*)|(__([^_]+)__)/g;
-  let lastIndex = 0;
+  let index = 0;
 
-  for (const match of text.matchAll(pattern)) {
-    if (match.index === undefined) continue;
-    if (match.index > lastIndex) {
-      elements.push({ tag: "text", text: text.slice(lastIndex, match.index) });
+  while (index < text.length) {
+    const linkStart = text.indexOf("[", index);
+    const boldStarStart = text.indexOf("**", index);
+    const boldUnderscoreStart = text.indexOf("__", index);
+    const candidates = [linkStart, boldStarStart, boldUnderscoreStart].filter((value) => value >= 0);
+    const next = candidates.length ? Math.min(...candidates) : -1;
+
+    if (next < 0) {
+      elements.push({ tag: "text", text: text.slice(index) });
+      break;
     }
 
-    if (match[2] && match[3]) {
-      elements.push({ tag: "a", text: match[2], href: match[3] });
-    } else {
-      elements.push({ tag: "text", text: match[5] ?? match[7] ?? "", style: ["bold"] });
+    if (next > index) {
+      elements.push({ tag: "text", text: text.slice(index, next) });
     }
 
-    lastIndex = match.index + match[0].length;
+    if (next === linkStart) {
+      const labelEnd = text.indexOf("](", next);
+      if (labelEnd > next) {
+        const hrefStart = labelEnd + 2;
+        const hrefEnd = findMarkdownLinkEnd(text, hrefStart);
+        const href = hrefEnd >= 0 ? text.slice(hrefStart, hrefEnd) : "";
+        if (hrefEnd >= 0 && /^https?:\/\/\S+$/.test(href)) {
+          elements.push({ tag: "a", text: text.slice(next + 1, labelEnd), href });
+          index = hrefEnd + 1;
+          continue;
+        }
+      }
+      elements.push({ tag: "text", text: text[next] });
+      index = next + 1;
+      continue;
+    }
+
+    const marker = next === boldStarStart ? "**" : "__";
+    const close = text.indexOf(marker, next + marker.length);
+    if (close > next + marker.length) {
+      elements.push({ tag: "text", text: text.slice(next + marker.length, close), style: ["bold"] });
+      index = close + marker.length;
+      continue;
+    }
+
+    elements.push({ tag: "text", text: marker });
+    index = next + marker.length;
   }
 
-  if (lastIndex < text.length) {
-    elements.push({ tag: "text", text: text.slice(lastIndex) });
-  }
-
-  return elements.length ? elements : [{ tag: "text", text }];
+  const compacted = elements.filter((element) => element.tag !== "text" || element.text.length > 0);
+  return compacted.length ? compacted : [{ tag: "text", text: " " }];
 }
 
 function pushParagraph(content: FeishuPostElement[][], lines: string[]): void {
@@ -83,6 +123,10 @@ function pushParagraph(content: FeishuPostElement[][], lines: string[]): void {
 }
 
 function parseMarkdownBlocks(markdown: string): FeishuPostElement[][] {
+  if (!markdown.trim()) {
+    return [[{ tag: "text", text: " " }]];
+  }
+
   const content: FeishuPostElement[][] = [];
   const paragraph: string[] = [];
   const code: string[] = [];
