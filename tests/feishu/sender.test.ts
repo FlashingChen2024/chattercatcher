@@ -146,6 +146,26 @@ describe("FeishuMessageSender", () => {
     ]);
   });
 
+  it("does not fall back when rich text sending fails for non-format errors", async () => {
+    const calls: unknown[] = [];
+    const sender = new FeishuMessageSender({
+      im: {
+        v1: {
+          message: {
+            async create(payload) {
+              calls.push(payload);
+              throw new Error("network timeout");
+            },
+          },
+        },
+      },
+    });
+
+    await expect(sender.sendTextToChat("oc_family", "**回答**")).rejects.toThrow("network timeout");
+    expect(calls).toHaveLength(1);
+    expect((calls[0] as { data: { msg_type: string } }).data.msg_type).toBe("post");
+  });
+
   it("优先支持用富文本回复指定飞书消息", async () => {
     const calls: unknown[] = [];
     const sender = new FeishuMessageSender({

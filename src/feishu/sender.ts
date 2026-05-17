@@ -101,6 +101,28 @@ function extractImageKey(response: unknown): string {
   throw new Error("飞书图片上传响应缺少 image_key。");
 }
 
+function isRichTextCompatibilityError(error: unknown): boolean {
+  const value = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  const code = value.code ?? value.errorCode;
+  const message = error instanceof Error ? error.message : String(error);
+
+  return code === 230001 || /post|msg_type|content|unsupported|invalid/i.test(message);
+}
+
+async function sendWithTextFallback(input: {
+  sendPost: () => Promise<unknown>;
+  sendText: () => Promise<unknown>;
+}): Promise<void> {
+  try {
+    await input.sendPost();
+  } catch (error) {
+    if (!isRichTextCompatibilityError(error)) {
+      throw error;
+    }
+    await input.sendText();
+  }
+}
+
 export class FeishuMessageSender implements MessageSender {
   constructor(private readonly client: FeishuClientLike) {}
 
@@ -137,23 +159,19 @@ export class FeishuMessageSender implements MessageSender {
     };
 
     if (this.client.im.v1?.message.create) {
-      try {
-        await this.client.im.v1.message.create(postPayload);
-        return;
-      } catch {
-        await this.client.im.v1.message.create(textPayload);
-        return;
-      }
+      await sendWithTextFallback({
+        sendPost: () => this.client.im.v1!.message.create(postPayload),
+        sendText: () => this.client.im.v1!.message.create(textPayload),
+      });
+      return;
     }
 
     if (this.client.im.message?.create) {
-      try {
-        await this.client.im.message.create(postPayload);
-        return;
-      } catch {
-        await this.client.im.message.create(textPayload);
-        return;
-      }
+      await sendWithTextFallback({
+        sendPost: () => this.client.im.message!.create(postPayload),
+        sendText: () => this.client.im.message!.create(textPayload),
+      });
+      return;
     }
 
     throw new Error("当前飞书 SDK 不支持消息发送接口。");
@@ -218,23 +236,19 @@ export class FeishuMessageSender implements MessageSender {
     };
 
     if (this.client.im.v1?.message.reply) {
-      try {
-        await this.client.im.v1.message.reply(postPayload);
-        return;
-      } catch {
-        await this.client.im.v1.message.reply(textPayload);
-        return;
-      }
+      await sendWithTextFallback({
+        sendPost: () => this.client.im.v1!.message.reply!(postPayload),
+        sendText: () => this.client.im.v1!.message.reply!(textPayload),
+      });
+      return;
     }
 
     if (this.client.im.message?.reply) {
-      try {
-        await this.client.im.message.reply(postPayload);
-        return;
-      } catch {
-        await this.client.im.message.reply(textPayload);
-        return;
-      }
+      await sendWithTextFallback({
+        sendPost: () => this.client.im.message!.reply!(postPayload),
+        sendText: () => this.client.im.message!.reply!(textPayload),
+      });
+      return;
     }
 
     throw new Error("当前飞书 SDK 不支持消息回复接口。");
