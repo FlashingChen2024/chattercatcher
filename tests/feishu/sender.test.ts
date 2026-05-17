@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FeishuMessageSender } from "../../src/feishu/sender.js";
 
 describe("FeishuMessageSender", () => {
-  it("通过飞书 im.v1.message.create 发送文本消息", async () => {
+  it("通过飞书 im.v1.message.create 发送 Markdown 富文本消息", async () => {
     const calls: unknown[] = [];
     const sender = new FeishuMessageSender({
       im: {
@@ -16,14 +16,27 @@ describe("FeishuMessageSender", () => {
       },
     });
 
-    await sender.sendTextToChat("oc_family", "回答");
+    await sender.sendTextToChat("oc_family", "# 回答\n\n请看 **重点**");
 
     expect(calls).toEqual([
       {
         data: {
           receive_id: "oc_family",
-          msg_type: "text",
-          content: JSON.stringify({ text: "回答" }),
+          msg_type: "post",
+          content: JSON.stringify({
+            post: {
+              zh_cn: {
+                title: "",
+                content: [
+                  [{ tag: "text", text: "回答", style: ["bold"] }],
+                  [
+                    { tag: "text", text: "请看 " },
+                    { tag: "text", text: "重点", style: ["bold"] },
+                  ],
+                ],
+              },
+            },
+          }),
         },
         params: {
           receive_id_type: "chat_id",
@@ -32,7 +45,7 @@ describe("FeishuMessageSender", () => {
     ]);
   });
 
-  it("sends text messages with explicit Feishu mentions", async () => {
+  it("sends rich text messages with explicit Feishu mentions", async () => {
     const calls: unknown[] = [];
     const sender = new FeishuMessageSender({
       im: {
@@ -54,8 +67,20 @@ describe("FeishuMessageSender", () => {
       {
         data: {
           receive_id: "oc_family",
-          msg_type: "text",
-          content: JSON.stringify({ text: '<at user_id="ou_mom">妈妈</at> 记得带水杯' }),
+          msg_type: "post",
+          content: JSON.stringify({
+            post: {
+              zh_cn: {
+                title: "",
+                content: [
+                  [
+                    { tag: "at", user_id: "ou_mom", user_name: "妈妈" },
+                    { tag: "text", text: " 记得带水杯" },
+                  ],
+                ],
+              },
+            },
+          }),
         },
         params: {
           receive_id_type: "chat_id",
@@ -64,7 +89,64 @@ describe("FeishuMessageSender", () => {
     ]);
   });
 
-  it("优先支持回复指定飞书消息", async () => {
+  it("falls back to plain text when rich text sending fails", async () => {
+    const calls: unknown[] = [];
+    const sender = new FeishuMessageSender({
+      im: {
+        v1: {
+          message: {
+            async create(payload) {
+              calls.push(payload);
+              if ((payload as { data: { msg_type: string } }).data.msg_type === "post") {
+                throw new Error("post unsupported");
+              }
+            },
+          },
+        },
+      },
+    });
+
+    await sender.sendTextToChat("oc_family", "**回答**", {
+      mentions: [{ openId: "ou_mom", name: "妈妈" }],
+    });
+
+    expect(calls).toEqual([
+      {
+        data: {
+          receive_id: "oc_family",
+          msg_type: "post",
+          content: JSON.stringify({
+            post: {
+              zh_cn: {
+                title: "",
+                content: [
+                  [
+                    { tag: "at", user_id: "ou_mom", user_name: "妈妈" },
+                    { tag: "text", text: " 回答", style: ["bold"] },
+                  ],
+                ],
+              },
+            },
+          }),
+        },
+        params: {
+          receive_id_type: "chat_id",
+        },
+      },
+      {
+        data: {
+          receive_id: "oc_family",
+          msg_type: "text",
+          content: JSON.stringify({ text: '<at user_id="ou_mom">妈妈</at> **回答**' }),
+        },
+        params: {
+          receive_id_type: "chat_id",
+        },
+      },
+    ]);
+  });
+
+  it("优先支持用富文本回复指定飞书消息", async () => {
     const calls: unknown[] = [];
     const sender = new FeishuMessageSender({
       im: {
@@ -79,7 +161,7 @@ describe("FeishuMessageSender", () => {
       },
     });
 
-    await sender.replyTextToMessage("om_question", "回答");
+    await sender.replyTextToMessage("om_question", "# 回答");
 
     expect(calls).toEqual([
       {
@@ -87,14 +169,21 @@ describe("FeishuMessageSender", () => {
           message_id: "om_question",
         },
         data: {
-          msg_type: "text",
-          content: JSON.stringify({ text: "回答" }),
+          msg_type: "post",
+          content: JSON.stringify({
+            post: {
+              zh_cn: {
+                title: "",
+                content: [[{ tag: "text", text: "回答", style: ["bold"] }]],
+              },
+            },
+          }),
         },
       },
     ]);
   });
 
-  it("支持通过飞书 im.v1.message.reply 回复指定消息", async () => {
+  it("回复富文本失败时降级为纯文本回复", async () => {
     const calls: unknown[] = [];
     const sender = new FeishuMessageSender({
       im: {
@@ -105,13 +194,16 @@ describe("FeishuMessageSender", () => {
             },
             async reply(payload) {
               calls.push(payload);
+              if ((payload as { data: { msg_type: string } }).data.msg_type === "post") {
+                throw new Error("post unsupported");
+              }
             },
           },
         },
       },
     });
 
-    await sender.replyTextToMessage("om_question", "回答");
+    await sender.replyTextToMessage("om_question", "**回答**");
 
     expect(calls).toEqual([
       {
@@ -119,8 +211,24 @@ describe("FeishuMessageSender", () => {
           message_id: "om_question",
         },
         data: {
+          msg_type: "post",
+          content: JSON.stringify({
+            post: {
+              zh_cn: {
+                title: "",
+                content: [[{ tag: "text", text: "回答", style: ["bold"] }]],
+              },
+            },
+          }),
+        },
+      },
+      {
+        path: {
+          message_id: "om_question",
+        },
+        data: {
           msg_type: "text",
-          content: JSON.stringify({ text: "回答" }),
+          content: JSON.stringify({ text: "**回答**" }),
         },
       },
     ]);
