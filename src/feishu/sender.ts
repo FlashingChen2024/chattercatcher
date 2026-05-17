@@ -1,15 +1,10 @@
 import * as lark from "@larksuiteoapi/node-sdk";
 import fs from "node:fs/promises";
 import type { AppConfig, AppSecrets } from "../config/schema.js";
+import { buildFeishuPostContent, formatTextWithMentions } from "./markdown-post.js";
+import type { SendTextOptions } from "./markdown-post.js";
 
-export interface FeishuTextMention {
-  openId: string;
-  name: string;
-}
-
-export interface SendTextOptions {
-  mentions?: FeishuTextMention[];
-}
+export type { FeishuTextMention, SendTextOptions } from "./markdown-post.js";
 
 export interface MessageSender {
   sendTextToChat(chatId: string, text: string, options?: SendTextOptions): Promise<void>;
@@ -106,17 +101,26 @@ function extractImageKey(response: unknown): string {
   throw new Error("飞书图片上传响应缺少 image_key。");
 }
 
-function escapeAtText(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function isRichTextCompatibilityError(error: unknown): boolean {
+  const value = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  const code = value.code ?? value.errorCode;
+  const message = error instanceof Error ? error.message : String(error);
+
+  return code === 230001 || /post|msg_type|content|unsupported|invalid/i.test(message);
 }
 
-function formatTextWithMentions(text: string, options?: SendTextOptions): string {
-  const mentions = options?.mentions ?? [];
-  if (mentions.length === 0) return text;
-  const prefix = mentions
-    .map((mention) => `<at user_id="${escapeAtText(mention.openId)}">${escapeAtText(mention.name)}</at>`)
-    .join(" ");
-  return `${prefix} ${text}`.trim();
+async function sendWithTextFallback(input: {
+  sendPost: () => Promise<unknown>;
+  sendText: () => Promise<unknown>;
+}): Promise<void> {
+  try {
+    await input.sendPost();
+  } catch (error) {
+    if (!isRichTextCompatibilityError(error)) {
+      throw error;
+    }
+    await input.sendText();
+  }
 }
 
 export class FeishuMessageSender implements MessageSender {
@@ -133,7 +137,17 @@ export class FeishuMessageSender implements MessageSender {
   }
 
   async sendTextToChat(chatId: string, text: string, options?: SendTextOptions): Promise<void> {
-    const payload = {
+    const postPayload = {
+      data: {
+        receive_id: chatId,
+        msg_type: "post",
+        content: JSON.stringify(buildFeishuPostContent(text, options)),
+      },
+      params: {
+        receive_id_type: "chat_id" as const,
+      },
+    };
+    const textPayload = {
       data: {
         receive_id: chatId,
         msg_type: "text",
@@ -145,18 +159,22 @@ export class FeishuMessageSender implements MessageSender {
     };
 
     if (this.client.im.v1?.message.create) {
-      await this.client.im.v1.message.create(payload);
+      await sendWithTextFallback({
+        sendPost: () => this.client.im.v1!.message.create(postPayload),
+        sendText: () => this.client.im.v1!.message.create(textPayload),
+      });
       return;
     }
 
     if (this.client.im.message?.create) {
-      await this.client.im.message.create(payload);
+      await sendWithTextFallback({
+        sendPost: () => this.client.im.message!.create(postPayload),
+        sendText: () => this.client.im.message!.create(textPayload),
+      });
       return;
     }
 
-    {
-      throw new Error("当前飞书 SDK 不支持消息发送接口。");
-    }
+    throw new Error("当前飞书 SDK 不支持消息发送接口。");
   }
 
   async sendImageToChat(chatId: string, imagePath: string): Promise<void> {
@@ -198,7 +216,16 @@ export class FeishuMessageSender implements MessageSender {
   }
 
   async replyTextToMessage(messageId: string, text: string): Promise<void> {
-    const payload = {
+    const postPayload = {
+      path: {
+        message_id: messageId,
+      },
+      data: {
+        msg_type: "post",
+        content: JSON.stringify(buildFeishuPostContent(text)),
+      },
+    };
+    const textPayload = {
       path: {
         message_id: messageId,
       },
@@ -209,12 +236,18 @@ export class FeishuMessageSender implements MessageSender {
     };
 
     if (this.client.im.v1?.message.reply) {
-      await this.client.im.v1.message.reply(payload);
+      await sendWithTextFallback({
+        sendPost: () => this.client.im.v1!.message.reply!(postPayload),
+        sendText: () => this.client.im.v1!.message.reply!(textPayload),
+      });
       return;
     }
 
     if (this.client.im.message?.reply) {
-      await this.client.im.message.reply(payload);
+      await sendWithTextFallback({
+        sendPost: () => this.client.im.message!.reply!(postPayload),
+        sendText: () => this.client.im.message!.reply!(textPayload),
+      });
       return;
     }
 
